@@ -427,6 +427,7 @@ std::shared_ptr<Tensor> var(const std::shared_ptr<Tensor>& a, bool keepdim, bool
 }
 
 std::shared_ptr<Tensor> var(const std::shared_ptr<Tensor>& a, int dim, bool keepdim, bool unbiased) {
+    if (dim < 0) dim += a->shape.size();
     auto mu = mean(a, dim, true);
     auto diff = sub(a, mu);
     auto variance = pow_scalar(diff, 2);

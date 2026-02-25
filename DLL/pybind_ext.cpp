@@ -28,7 +28,18 @@ PYBIND11_MODULE(_c_tensor, m) {
         .def("__repr__", &Tensor::repr)
 
         // unary operations
-        .def("transpose", [](const std::shared_ptr<Tensor>& a) { return transpose(a); })
+        .def("transpose", [](const std::shared_ptr<Tensor>& a, int dim0, int dim1) { return transpose(a, dim0, dim1); }, py::arg("dim0") = -2, py::arg("dim1") = -1)
+        .def("exp", [](const std::shared_ptr<Tensor>& a) { return exp(a); })
+        .def("log", [](const std::shared_ptr<Tensor>& a) { return log(a); })
+        .def("sqrt", [](const std::shared_ptr<Tensor>& a) { return sqrt(a); })
+        .def("cbrt", [](const std::shared_ptr<Tensor>& a) { return cbrt(a); })
+        .def("abs", [](const std::shared_ptr<Tensor>& a) { return abs(a); })
+        .def("sin", [](const std::shared_ptr<Tensor>& a) { return sin(a); })
+        .def("cos", [](const std::shared_ptr<Tensor>& a) { return cos(a); })
+        .def("relu", [](const std::shared_ptr<Tensor>& a) { return relu(a); })
+        .def("tanh", [](const std::shared_ptr<Tensor>& a) { return tanh(a); })
+        .def("sigmoid", [](const std::shared_ptr<Tensor>& a) { return sigmoid(a); })
+        .def("softmax", [](const std::shared_ptr<Tensor>& a, int dim) { return softmax(a, dim); }, py::arg("dim") = -1)
 
         // binary operations
         .def("__add__", [](const std::shared_ptr<Tensor>& a, const std::shared_ptr<Tensor>& b) { return add(a, b); })
