@@ -31,5 +31,4 @@ public:
 
     // backprop
     void backward();
-    // void backward(const std::shared_ptr<Tensor>& grad);
 };
