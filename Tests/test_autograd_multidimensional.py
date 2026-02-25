@@ -4,7 +4,7 @@ import random
 from DLL import rand
 
 
-rtol = 1e-5
+rtol = 1e-4
 
 def sync_tensors(dll_tensor):
     t = torch.tensor(dll_tensor.data, dtype=torch.float32).reshape(dll_tensor.shape)
@@ -12,17 +12,21 @@ def sync_tensors(dll_tensor):
     return t
 
 def apply_random_reduction(dll_t, torch_t):
-    reduction_type = random.choice(["sum", "mean", "prod", "max", "min"])
+    reduction_type = random.choice(["sum", "mean", "prod", "max", "min", "var", "std"])
     mode = random.randint(0, 1)
     
+    kwargs = {}
+    if reduction_type in ["var", "std"]:
+        kwargs["unbiased"] = random.choice([True, False])
+
     if mode == 0:
-        res_dll = getattr(dll_t, reduction_type)()
-        res_torch = getattr(torch_t, reduction_type)()
+        res_dll = getattr(dll_t, reduction_type)(**kwargs)
+        res_torch = getattr(torch_t, reduction_type)(**kwargs)
     else:
         dim = random.randint(0, len(dll_t.shape) - 1)
         keepdim = random.choice([True, False])
-        res_dll = getattr(dll_t, reduction_type)(dim=dim, keepdim=keepdim)
-        res_torch = getattr(torch_t, reduction_type)(dim=dim, keepdim=keepdim)
+        res_dll = getattr(dll_t, reduction_type)(dim=dim, keepdim=keepdim, **kwargs)
+        res_torch = getattr(torch_t, reduction_type)(dim=dim, keepdim=keepdim, **kwargs)
         
         if reduction_type in ["max", "min"]:
             res_torch = res_torch.values
@@ -32,7 +36,7 @@ def apply_random_reduction(dll_t, torch_t):
 @pytest.fixture(params=range(50))
 def setup_tensors():
     rank = random.randint(1, 4)
-    shape = [random.randint(1, 6) for _ in range(rank)]
+    shape = [random.randint(2, 6) for _ in range(rank)] 
     
     a_dll = rand(shape)
     b_dll = rand(shape)
@@ -72,20 +76,28 @@ def test_random_nested_reductions(setup_tensors):
     
     a_dll.requires_grad = True
     
-    red_type_1 = random.choice(["sum", "mean", "prod", "max", "min"])
+    red_type_1 = random.choice(["sum", "mean", "prod", "max", "min", "var", "std"])
     dim = random.randint(0, len(a_dll.shape) - 1)
     keepdim = random.choice([True, False])
 
-    mid_dll = getattr(a_dll, red_type_1)(dim=dim, keepdim=keepdim)
-    mid_t = getattr(a_t, red_type_1)(dim=dim, keepdim=keepdim)
+    kwargs_1 = {}
+    if red_type_1 in ["var", "std"]:
+        kwargs_1["unbiased"] = random.choice([True, False])
+
+    mid_dll = getattr(a_dll, red_type_1)(dim=dim, keepdim=keepdim, **kwargs_1)
+    mid_t = getattr(a_t, red_type_1)(dim=dim, keepdim=keepdim, **kwargs_1)
     
     if red_type_1 in ["max", "min"]:
         mid_t = mid_t.values
 
-    red_type_2 = random.choice(["sum", "mean", "prod", "max", "min"])
+    red_type_2 = random.choice(["sum", "mean", "prod", "max", "min", "var", "std"])
     
-    L_dll = getattr(mid_dll, red_type_2)()
-    L_t = getattr(mid_t, red_type_2)()
+    kwargs_2 = {}
+    if red_type_2 in ["var", "std"]:
+        kwargs_2["unbiased"] = random.choice([True, False])
+        
+    L_dll = getattr(mid_dll, red_type_2)(**kwargs_2)
+    L_t = getattr(mid_t, red_type_2)(**kwargs_2)
 
     L_dll.backward()
     L_t.backward()

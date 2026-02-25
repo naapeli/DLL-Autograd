@@ -62,5 +62,9 @@ PYBIND11_MODULE(_c_tensor, m) {
         .def("max", [](const std::shared_ptr<Tensor>& a, int dim, bool keepdim) { return max(a, dim, keepdim); }, py::arg("dim"), py::arg("keepdim") = false)
         .def("min", [](const std::shared_ptr<Tensor>& a, bool keepdim) { return min(a, keepdim); }, py::arg("keepdim") = false)
         .def("min", [](const std::shared_ptr<Tensor>& a, int dim, bool keepdim) { return min(a, dim, keepdim); }, py::arg("dim"), py::arg("keepdim") = false)
+        .def("var", [](const std::shared_ptr<Tensor>& a, bool keepdim, bool unbiased) { return var(a, keepdim, unbiased); }, py::arg("keepdim") = false, py::arg("unbiased") = true)
+        .def("var", [](const std::shared_ptr<Tensor>& a, int dim, bool keepdim, bool unbiased) { return var(a, dim, keepdim, unbiased); }, py::arg("dim"), py::arg("keepdim") = false, py::arg("unbiased") = true)
+        .def("std", [](const std::shared_ptr<Tensor>& a, bool keepdim, bool unbiased) { return std_dev(a, keepdim, unbiased); }, py::arg("keepdim") = false, py::arg("unbiased") = true)
+        .def("std", [](const std::shared_ptr<Tensor>& a, int dim, bool keepdim, bool unbiased) { return std_dev(a, dim, keepdim, unbiased); }, py::arg("dim"), py::arg("keepdim") = false, py::arg("unbiased") = true)
         ;
 }

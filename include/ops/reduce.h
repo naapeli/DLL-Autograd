@@ -13,7 +13,7 @@ std::shared_ptr<Tensor> max(const std::shared_ptr<Tensor>& tensor, bool keepdim=
 std::shared_ptr<Tensor> max(const std::shared_ptr<Tensor>& tensor, int dim, bool keepdim=false);
 std::shared_ptr<Tensor> min(const std::shared_ptr<Tensor>& tensor, bool keepdim=false);
 std::shared_ptr<Tensor> min(const std::shared_ptr<Tensor>& tensor, int dim, bool keepdim=false);
-// std::shared_ptr<Tensor> var(const std::shared_ptr<Tensor>& tensor, bool keepdim=false);
-// std::shared_ptr<Tensor> var(const std::shared_ptr<Tensor>& tensor, int dim, bool keepdim=false);
-// std::shared_ptr<Tensor> std(const std::shared_ptr<Tensor>& tensor, bool keepdim=false);
-// std::shared_ptr<Tensor> std(const std::shared_ptr<Tensor>& tensor, int dim, bool keepdim=false);
+std::shared_ptr<Tensor> var(const std::shared_ptr<Tensor>& tensor, bool keepdim=false, bool unbiased=true);
+std::shared_ptr<Tensor> var(const std::shared_ptr<Tensor>& tensor, int dim, bool keepdim=false, bool unbiased=true);
+std::shared_ptr<Tensor> std_dev(const std::shared_ptr<Tensor>& tensor, bool keepdim=false, bool unbiased=true);
+std::shared_ptr<Tensor> std_dev(const std::shared_ptr<Tensor>& tensor, int dim, bool keepdim=false, bool unbiased=true);

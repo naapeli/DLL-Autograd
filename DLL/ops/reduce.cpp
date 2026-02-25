@@ -415,97 +415,29 @@ std::shared_ptr<Tensor> min(const std::shared_ptr<Tensor>& a, int dim, bool keep
     return out;
 }
 
-// std::shared_ptr<Tensor> var(const std::shared_ptr<Tensor>& a, int dim, bool keepdim) {
-//     if (dim < 0) dim += a->shape.size();
-//     int n = a->shape[dim];
-//     if (n <= 1) throw std::runtime_error("Variance requires dimension size > 1 for unbiased estimation.");
+std::shared_ptr<Tensor> var(const std::shared_ptr<Tensor>& a, bool keepdim, bool unbiased) {
+    auto mu = mean(a, true);
+    auto diff = sub(a, mu);
+    auto variance = pow_scalar(diff, 2);
 
-//     std::vector<int> out_shape;
-//     for (int i = 0; i < (int)a->shape.size(); ++i) {
-//         if (i == dim) {
-//             if (keepdim) out_shape.push_back(1);
-//         } else {
-//             out_shape.push_back(a->shape[i]);
-//         }
-//     }
-//     if (out_shape.empty()) out_shape = {1};
+    int n_elements = 1;
+    for (int dim_size : a->shape) { n_elements *= dim_size; }
+    int normalizer = (unbiased) ? n_elements - 1 : n_elements;
+    return div_scalar(sum(variance, keepdim), static_cast<float>(normalizer));
+}
 
-//     int out_size = 1;
-//     for (int s : out_shape) out_size *= s;
-//     std::vector<int> out_strides(out_shape.size());
-//     int current_stride = 1;
-//     for (int i = (int)out_shape.size() - 1; i >= 0; --i) {
-//         out_strides[i] = current_stride;
-//         current_stride *= out_shape[i];
-//     }
+std::shared_ptr<Tensor> var(const std::shared_ptr<Tensor>& a, int dim, bool keepdim, bool unbiased) {
+    auto mu = mean(a, dim, true);
+    auto diff = sub(a, mu);
+    auto variance = pow_scalar(diff, 2);
+    int normalizer = (unbiased) ? (a->shape)[dim] - 1 : (a->shape)[dim];
+    return div_scalar(sum(variance, dim, keepdim), static_cast<float>(normalizer));
+}
 
-//     std::vector<float> means(out_size, 0.0f);
-//     for (int i = 0; i < (int)a->data->size(); ++i) {
-//         int temp_i = i;
-//         int out_idx = 0;
-//         for (int d = 0; d < (int)a->shape.size(); ++d) {
-//             int coord = (temp_i / a->strides[d]) % a->shape[d];
-//             temp_i %= a->strides[d];
-//             if (d != dim) {
-//                 int out_d = (keepdim || d < dim) ? d : d - 1;
-//                 out_idx += coord * out_strides[out_d];
-//             }
-//         }
-//         means[out_idx] += (*a->data)[i];
-//     }
-//     for (int j = 0; j < out_size; ++j) {
-//         means[j] /= n;
-//     }
+std::shared_ptr<Tensor> std_dev(const std::shared_ptr<Tensor>& a, bool keepdim, bool unbiased) {
+    return pow_scalar(var(a, keepdim, unbiased), 0.5f);
+}
 
-//     std::vector<float> out_data(out_size, 0.0f);
-//     for (int i = 0; i < (int)a->data->size(); ++i) {
-//         int temp_i = i;
-//         int out_idx = 0;
-//         for (int d = 0; d < (int)a->shape.size(); ++d) {
-//             int coord = (temp_i / a->strides[d]) % a->shape[d];
-//             temp_i %= a->strides[d];
-//             if (d != dim) {
-//                 int out_d = (keepdim || d < dim) ? d : d - 1;
-//                 out_idx += coord * out_strides[out_d];
-//             }
-//         }
-//         float diff = (*a->data)[i] - means[out_idx];
-//         out_data[out_idx] += diff * diff;
-//     }
-//     for (int j = 0; j < out_size; ++j) {
-//         out_data[j] /= (n - 1);
-//     }
-
-//     auto out = std::make_shared<Tensor>(out_data, out_shape);
-
-//     if (a->requires_grad) {
-//         out->requires_grad = true;
-//         out->_prev = {a};
-//         out->_backward = [out, a, dim, out_strides, keepdim, means, n]() {
-//             if (!a->grad) a->zero_grad();
-//             float scale = 2.0f / (n - 1.0f);
-            
-//             for (int i = 0; i < (int)a->data->size(); ++i) {
-//                 int temp_i = i;
-//                 int out_idx = 0;
-//                 for (int d = 0; d < (int)a->shape.size(); ++d) {
-//                     int coord = (temp_i / a->strides[d]) % a->shape[d];
-//                     temp_i %= a->strides[d];
-//                     if (d != dim) {
-//                         int out_d = (keepdim || d < dim) ? d : d - 1;
-//                         out_idx += coord * out_strides[out_d];
-//                     }
-//                 }
-                
-//                 float diff = (*a->data)[i] - means[out_idx];
-//                 float local_grad = scale * diff;
-//                 (*a->grad->data)[i] += (*out->grad->data)[out_idx] * local_grad;
-//             }
-//         };
-//     }
-//     return out;
-// }
-
-// std::shared_ptr<Tensor> std_dev(const std::shared_ptr<Tensor>& a, int dim, bool keepdim) {
-//     return pow_scalar(var(a, dim, keepdim), 0.5f);
-// }
+std::shared_ptr<Tensor> std_dev(const std::shared_ptr<Tensor>& a, int dim, bool keepdim, bool unbiased) {
+    return pow_scalar(var(a, dim, keepdim, unbiased), 0.5f);
+}
