@@ -20,3 +20,5 @@ std::shared_ptr<Tensor> rdiv_scalar(const std::shared_ptr<Tensor>& a, float scal
 std::shared_ptr<Tensor> pow(const std::shared_ptr<Tensor>& a, const std::shared_ptr<Tensor>& b);
 std::shared_ptr<Tensor> pow_scalar(const std::shared_ptr<Tensor>& a, float scalar);
 std::shared_ptr<Tensor> rpow_scalar(const std::shared_ptr<Tensor>& a, float scalar);
+
+std::shared_ptr<Tensor> matmul(const std::shared_ptr<Tensor>& a, const std::shared_ptr<Tensor>& b);
