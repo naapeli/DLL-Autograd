@@ -1,0 +1,6 @@
+pybind11_add_module(_c_tensor tensor.cpp)
+
+add_custom_command(TARGET _c_tensor POST_BUILD
+    COMMAND python -m pybind11_stubgen _c_tensor -o ${CMAKE_CURRENT_SOURCE_DIR}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
