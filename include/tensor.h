@@ -1,12 +1,19 @@
 #pragma once
 #include <vector>
 #include <memory>
+#include <functional>
+
 
 class Tensor : public std::enable_shared_from_this<Tensor> {
 public:
     std::shared_ptr<std::vector<float>> data;
     std::vector<int> shape;
     std::vector<int> strides;
+
+    bool requires_grad = false;
+    std::shared_ptr<Tensor> grad = nullptr;
+    std::vector<std::shared_ptr<Tensor>> _prev;
+    std::function<void()> _backward = []() {};
 
     // Constructors
     Tensor(std::vector<float> d, std::vector<int> s);
@@ -19,6 +26,10 @@ public:
 
     // Utilities
     float item(const std::vector<int>& indices) const;
-    std::shared_ptr<Tensor> transpose();
     std::string repr() const;
+    void zero_grad();
+
+    // backprop
+    void backward();
+    // void backward(const std::shared_ptr<Tensor>& grad);
 };

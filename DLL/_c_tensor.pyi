@@ -3,6 +3,7 @@ import collections.abc
 import typing
 __all__: list[str] = ['Tensor']
 class Tensor:
+    requires_grad: bool
     @typing.overload
     def __add__(self, arg0: Tensor) -> Tensor:
         ...
@@ -47,12 +48,19 @@ class Tensor:
     @typing.overload
     def __truediv__(self, arg0: typing.SupportsFloat | typing.SupportsIndex) -> Tensor:
         ...
+    def backward(self) -> None:
+        ...
     def item(self, arg0: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex]) -> float:
         ...
     def transpose(self) -> Tensor:
         ...
+    def zero_grad(self) -> None:
+        ...
     @property
     def data(self) -> list[float]:
+        ...
+    @property
+    def grad(self) -> Tensor:
         ...
     @property
     def shape(self) -> list[int]:

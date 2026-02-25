@@ -2,6 +2,7 @@
 #include <pybind11/stl.h>
 #include "tensor.h"
 #include "ops/binary.h"
+#include "ops/unary.h"
 
 
 namespace py = pybind11;
@@ -14,9 +15,13 @@ PYBIND11_MODULE(_c_tensor, m) {
         .def_property_readonly("shape", &Tensor::get_shape)
         .def_property_readonly("strides", &Tensor::get_strides)
         .def_property_readonly("data", &Tensor::get_data)
+
+        // utils
         .def("item", &Tensor::item)
-        .def("transpose", &Tensor::transpose)
         .def("__repr__", &Tensor::repr)
+
+        // unary operations
+        .def("transpose", [](const std::shared_ptr<Tensor>& a) { return transpose(a); })
 
         // Addition
         .def("__add__", [](const std::shared_ptr<Tensor>& a, const std::shared_ptr<Tensor>& b) { return add(a, b); })
@@ -42,5 +47,10 @@ PYBIND11_MODULE(_c_tensor, m) {
         .def("__pow__", [](const std::shared_ptr<Tensor>& a, const std::shared_ptr<Tensor>& b) { return pow(a, b); })
         .def("__pow__", [](const std::shared_ptr<Tensor>& a, float scalar) { return pow_scalar(a, scalar); })
         .def("__rpow__", [](const std::shared_ptr<Tensor>& a, float scalar) { return rpow_scalar(a, scalar); })
+
+        .def_readwrite("requires_grad", &Tensor::requires_grad)
+        .def_property_readonly("grad", [](Tensor& t) { return t.grad; })
+        .def("backward", &Tensor::backward)
+        .def("zero_grad", &Tensor::zero_grad)
         ;
 }

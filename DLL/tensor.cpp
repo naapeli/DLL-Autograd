@@ -3,6 +3,7 @@
 #include <sstream>
 #include <iomanip>
 #include <string>
+#include <set>
 
 
 Tensor::Tensor(std::vector<float> d, std::vector<int> s) : shape(s) {
@@ -35,15 +36,6 @@ float Tensor::item(const std::vector<int>& indices) const {
         flat_index += indices[i] * strides[i];
     }
     return (*data)[flat_index];
-}
-
-std::shared_ptr<Tensor> Tensor::transpose() {
-    if (shape.size() != 2) {
-        throw std::runtime_error("This simple transpose only supports 2D matrices right now.");
-    }
-    std::vector<int> new_shape = {shape[1], shape[0]};
-    std::vector<int> new_strides = {strides[1], strides[0]};
-    return std::make_shared<Tensor>(data, new_shape, new_strides);
 }
 
 void format_tensor(std::stringstream& ss, const std::vector<float>& data, const std::vector<int>& shape, const std::vector<int>& strides, int dim, int offset, int indent_level, bool has_negatives) {
@@ -92,4 +84,41 @@ std::string Tensor::repr() const {
     }
     ss << "])";
     return ss.str();
+}
+
+void Tensor::zero_grad() {
+    int size = 1;
+    for (int dim : shape) size *= dim;
+    grad = std::make_shared<Tensor>(std::vector<float>(size, 0.0f), shape);
+}
+
+void Tensor::backward() {
+    int size = 1;
+    for (int dim : shape) size *= dim;
+    if (size != 1) {
+        throw std::runtime_error("grad can be implicitly created only for scalar outputs");
+    }
+
+    std::vector<std::shared_ptr<Tensor>> topo;
+    std::set<std::shared_ptr<Tensor>> visited;
+
+    std::function<void(std::shared_ptr<Tensor>)> build_topo = 
+        [&](std::shared_ptr<Tensor> v) {
+            if (visited.find(v) == visited.end()) {
+                visited.insert(v);
+                for (auto& parent : v->_prev) {
+                    build_topo(parent);
+                }
+                topo.push_back(v);
+            }
+        };
+
+    build_topo(shared_from_this());
+
+    if (!this->grad) this->zero_grad();
+    std::fill(this->grad->data->begin(), this->grad->data->end(), 1.0f);
+
+    for (auto it = topo.rbegin(); it != topo.rend(); ++it) {
+        (*it)->_backward();
+    }
 }

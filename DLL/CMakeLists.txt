@@ -1,7 +1,8 @@
 pybind11_add_module(_c_tensor 
     pybind_ext.cpp 
     tensor.cpp 
-    ops/binary.cpp
+    ops/binary.cpp 
+    ops/unary.cpp
 )
 
 add_custom_command(TARGET _c_tensor POST_BUILD

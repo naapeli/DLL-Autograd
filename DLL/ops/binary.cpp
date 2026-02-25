@@ -19,7 +19,26 @@ std::shared_ptr<Tensor> add(const std::shared_ptr<Tensor>& a, const std::shared_
     for (size_t i = 0; i < a->data->size(); ++i) {
         result_data[i] = (*a->data)[i] + (*b->data)[i];
     }
-    return std::make_shared<Tensor>(result_data, a->shape);
+    auto out = std::make_shared<Tensor>(result_data, a->shape);
+    if (a->requires_grad || b->requires_grad) {
+        out->requires_grad = true;
+        out->_prev = {a, b};
+        out->_backward = [out, a, b]() {
+            if (a->requires_grad) {
+                if (!a->grad) a->zero_grad();
+                for (size_t i = 0; i < out->grad->data->size(); ++i) {
+                    (*a->grad->data)[i] += (*out->grad->data)[i];
+                }
+            }
+            if (b->requires_grad) {
+                if (!b->grad) b->zero_grad();
+                for (size_t i = 0; i < out->grad->data->size(); ++i) {
+                    (*b->grad->data)[i] += (*out->grad->data)[i];
+                }
+            }
+        };
+    }
+    return out;
 }
 
 std::shared_ptr<Tensor> add_scalar(const std::shared_ptr<Tensor>& a, float scalar) {
@@ -27,7 +46,18 @@ std::shared_ptr<Tensor> add_scalar(const std::shared_ptr<Tensor>& a, float scala
     for (size_t i = 0; i < a->data->size(); ++i) {
         result_data[i] = (*a->data)[i] + scalar;
     }
-    return std::make_shared<Tensor>(result_data, a->shape);
+    auto out = std::make_shared<Tensor>(result_data, a->shape);
+    if (a->requires_grad) {
+        out->requires_grad = true;
+        out->_prev = {a};
+        out->_backward = [out, a]() {
+            if (!a->grad) a->zero_grad();
+            for (size_t i = 0; i < out->grad->data->size(); ++i) {
+                (*a->grad->data)[i] += (*out->grad->data)[i];
+            }
+        };
+    }
+    return out;
 }
 
 // --- Multiplication ---
@@ -37,7 +67,26 @@ std::shared_ptr<Tensor> mul(const std::shared_ptr<Tensor>& a, const std::shared_
     for (size_t i = 0; i < a->data->size(); ++i) {
         result_data[i] = (*a->data)[i] * (*b->data)[i];
     }
-    return std::make_shared<Tensor>(result_data, a->shape);
+    auto out = std::make_shared<Tensor>(result_data, a->shape);
+    if (a->requires_grad || b->requires_grad) {
+        out->requires_grad = true;
+        out->_prev = {a, b};
+        out->_backward = [out, a, b]() {
+            if (a->requires_grad) {
+                if (!a->grad) a->zero_grad();
+                for (size_t i = 0; i < out->grad->data->size(); ++i) {
+                    (*a->grad->data)[i] += (*b->data)[i] * (*out->grad->data)[i];
+                }
+            }
+            if (b->requires_grad) {
+                if (!b->grad) b->zero_grad();
+                for (size_t i = 0; i < out->grad->data->size(); ++i) {
+                    (*b->grad->data)[i] += (*a->data)[i] * (*out->grad->data)[i];
+                }
+            }
+        };
+    }
+    return out;
 }
 
 std::shared_ptr<Tensor> mul_scalar(const std::shared_ptr<Tensor>& a, float scalar) {
@@ -45,7 +94,20 @@ std::shared_ptr<Tensor> mul_scalar(const std::shared_ptr<Tensor>& a, float scala
     for (size_t i = 0; i < a->data->size(); ++i) {
         result_data[i] = (*a->data)[i] * scalar;
     }
-    return std::make_shared<Tensor>(result_data, a->shape);
+    auto out = std::make_shared<Tensor>(result_data, a->shape);
+    if (a->requires_grad) {
+        out->requires_grad = true;
+        out->_prev = {a};
+        out->_backward = [out, a, scalar]() {
+            if (a->requires_grad) {
+                if (!a->grad) a->zero_grad();
+                for (size_t i = 0; i < out->grad->data->size(); ++i) {
+                    (*a->grad->data)[i] += scalar * (*out->grad->data)[i];
+                }
+            }
+        };
+    }
+    return out;
 }
 
 // --- Subtraction ---
@@ -66,7 +128,26 @@ std::shared_ptr<Tensor> pow(const std::shared_ptr<Tensor>& a, const std::shared_
     for (size_t i = 0; i < a->data->size(); ++i) {
         result_data[i] = std::pow((*a->data)[i], (*b->data)[i]);
     }
-    return std::make_shared<Tensor>(result_data, a->shape);
+    auto out = std::make_shared<Tensor>(result_data, a->shape);
+    if (a->requires_grad || b->requires_grad) {
+        out->requires_grad = true;
+        out->_prev = {a, b};
+        out->_backward = [out, a, b]() {
+            if (a->requires_grad) {
+                if (!a->grad) a->zero_grad();
+                for (size_t i = 0; i < out->grad->data->size(); ++i) {
+                    (*a->grad->data)[i] += (*b->data)[i] * std::pow((*a->data)[i], (*b->data)[i] - 1) * (*out->grad->data)[i];
+                }
+            }
+            if (b->requires_grad) {
+                if (!b->grad) b->zero_grad();
+                for (size_t i = 0; i < out->grad->data->size(); ++i) {
+                    (*b->grad->data)[i] += (*out->data)[i] * std::log((*a->data)[i] + 1e-8f) * (*out->grad->data)[i];
+                }
+            }
+        };
+    }
+    return out;
 }
 
 std::shared_ptr<Tensor> pow_scalar(const std::shared_ptr<Tensor>& a, float scalar) {
@@ -74,7 +155,20 @@ std::shared_ptr<Tensor> pow_scalar(const std::shared_ptr<Tensor>& a, float scala
     for (size_t i = 0; i < a->data->size(); ++i) {
         result_data[i] = std::pow((*a->data)[i], scalar);
     }
-    return std::make_shared<Tensor>(result_data, a->shape);
+    auto out = std::make_shared<Tensor>(result_data, a->shape);
+    if (a->requires_grad) {
+        out->requires_grad = true;
+        out->_prev = {a};
+        out->_backward = [out, a, scalar]() {
+            if (a->requires_grad) {
+                if (!a->grad) a->zero_grad();
+                for (size_t i = 0; i < out->grad->data->size(); ++i) {
+                    (*a->grad->data)[i] += scalar * std::pow((*a->data)[i], scalar - 1) * (*out->grad->data)[i];
+                }
+            }
+        };
+    }
+    return out;
 }
 
 std::shared_ptr<Tensor> rpow_scalar(const std::shared_ptr<Tensor>& a, float scalar) {
@@ -82,7 +176,20 @@ std::shared_ptr<Tensor> rpow_scalar(const std::shared_ptr<Tensor>& a, float scal
     for (size_t i = 0; i < a->data->size(); ++i) {
         result_data[i] = std::pow(scalar, (*a->data)[i]);
     }
-    return std::make_shared<Tensor>(result_data, a->shape);
+    auto out = std::make_shared<Tensor>(result_data, a->shape);
+    if (a->requires_grad) {
+        out->requires_grad = true;
+        out->_prev = {a};
+        out->_backward = [out, a, scalar]() {
+            if (a->requires_grad) {
+                if (!a->grad) a->zero_grad();
+                for (size_t i = 0; i < out->grad->data->size(); ++i) {
+                    (*a->grad->data)[i] += (*out->data)[i] * std::log(scalar + 1e-8f) * (*out->grad->data)[i];
+                }
+            }
+        };
+    }
+    return out;
 }
 
 // --- Division ---
