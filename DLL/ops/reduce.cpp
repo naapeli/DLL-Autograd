@@ -1,13 +1,17 @@
 #include "ops/reduce.h"
 #include "ops/binary.h"
+#include "ops/unary.h"
 #include <stdexcept>
 #include <limits>
+#include <omp.h>
 
 
 std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, bool keepdim) {
     float total = 0;
-    for (float val : *a->data) {
-        total += val;
+    
+    #pragma omp parallel for simd reduction(+:total)
+    for (size_t i = 0; i < a->data->size(); ++i) {
+        total += (*a->data)[i];
     }
 
     std::vector<int> out_shape;
@@ -21,6 +25,8 @@ std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, bool keepdim) {
         out->_backward = [out, a]() {
             if (!a->grad) a->zero_grad();
             float upstream_grad = (*out->grad->data)[0];
+            
+            #pragma omp parallel for simd
             for (size_t i = 0; i < a->grad->data->size(); ++i) {
                 (*a->grad->data)[i] += upstream_grad;
             }
@@ -52,6 +58,7 @@ std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, int dim, bool keep
 
     std::vector<float> out_data(out_size, 0.0f);
     
+    #pragma omp parallel for
     for (int i = 0; i < (int)a->data->size(); ++i) {
         int temp_i = i;
         int out_idx = 0;
@@ -63,6 +70,7 @@ std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, int dim, bool keep
                 out_idx += coord * out_strides[out_d];
             }
         }
+        #pragma omp atomic
         out_data[out_idx] += (*a->data)[i];
     }
 
@@ -73,6 +81,8 @@ std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, int dim, bool keep
         out->_prev = {a};
         out->_backward = [out, a, dim, out_strides, keepdim]() {
             if (!a->grad) a->zero_grad();            
+            
+            #pragma omp parallel for
             for (int i = 0; i < (int)a->data->size(); ++i) {
                 int temp_i = i;
                 int out_idx = 0;
@@ -84,6 +94,7 @@ std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, int dim, bool keep
                         out_idx += coord * out_strides[out_d];
                     }
                 }
+                // No atomic needed here because 'i' is unique for every thread
                 (*a->grad->data)[i] += (*out->grad->data)[out_idx];
             }
         };
@@ -93,8 +104,10 @@ std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, int dim, bool keep
 
 std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, bool keepdim) {
     float total = 1.0f;
-    for (float val : *a->data) {
-        total *= val;
+    
+    #pragma omp parallel for simd reduction(*:total)
+    for (size_t i = 0; i < a->data->size(); ++i) {
+        total *= (*a->data)[i];
     }
     std::vector<int> out_shape;
     if (keepdim) { out_shape.assign(a->shape.size(), 1); } else { out_shape = {1}; }
@@ -106,7 +119,10 @@ std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, bool keepdim) {
             if (!a->grad) a->zero_grad();
             int zero_count = 0;
             float non_zero_prod = 1.0f;
-            for (float val : *a->data) {
+            
+            #pragma omp parallel for reduction(+:zero_count) reduction(*:non_zero_prod)
+            for (size_t i = 0; i < a->data->size(); ++i) {
+                float val = (*a->data)[i];
                 if (val == 0.0f) {
                     zero_count++;
                 } else {
@@ -115,6 +131,8 @@ std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, bool keepdim) {
             }
             float upstream_grad = (*out->grad->data)[0];
             float out_val = (*out->data)[0];
+            
+            #pragma omp parallel for simd
             for (size_t i = 0; i < a->data->size(); ++i) {
                 float val = (*a->data)[i];
                 float local_grad = 0.0f;
@@ -150,6 +168,8 @@ std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, int dim, bool kee
         current_stride *= out_shape[i];
     }
     std::vector<float> out_data(out_size, 1.0f);
+    
+    #pragma omp parallel for
     for (int i = 0; i < (int)a->data->size(); ++i) {
         int temp_i = i;
         int out_idx = 0;
@@ -161,6 +181,7 @@ std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, int dim, bool kee
                 out_idx += coord * out_strides[out_d];
             }
         }
+        #pragma omp atomic
         out_data[out_idx] *= (*a->data)[i];
     }
     auto out = std::make_shared<Tensor>(out_data, out_shape);
@@ -172,6 +193,8 @@ std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, int dim, bool kee
             int out_size = out->data->size();
             std::vector<int> zero_counts(out_size, 0);
             std::vector<float> non_zero_prods(out_size, 1.0f);
+            
+            #pragma omp parallel for
             for (int i = 0; i < (int)a->data->size(); ++i) {
                 int temp_i = i;
                 int out_idx = 0;
@@ -185,11 +208,15 @@ std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, int dim, bool kee
                 }
                 float val = (*a->data)[i];
                 if (val == 0.0f) {
+                    #pragma omp atomic
                     zero_counts[out_idx]++;
                 } else {
+                    #pragma omp atomic
                     non_zero_prods[out_idx] *= val;
                 }
             }
+            
+            #pragma omp parallel for
             for (int i = 0; i < (int)a->data->size(); ++i) {
                 int temp_i = i;
                 int out_idx = 0;
@@ -237,10 +264,25 @@ std::shared_ptr<Tensor> max(const std::shared_ptr<Tensor>& a, bool keepdim) {
     float max_val = -std::numeric_limits<float>::infinity();
     int argmax = -1;
 
-    for (int i = 0; i < (int)a->data->size(); ++i) {
-        if ((*a->data)[i] > max_val) {
-            max_val = (*a->data)[i];
-            argmax = i;
+    #pragma omp parallel
+    {
+        float local_max = -std::numeric_limits<float>::infinity();
+        int local_argmax = -1;
+        
+        #pragma omp for
+        for (int i = 0; i < (int)a->data->size(); ++i) {
+            if ((*a->data)[i] > local_max) {
+                local_max = (*a->data)[i];
+                local_argmax = i;
+            }
+        }
+        
+        #pragma omp critical
+        {
+            if (local_max > max_val) {
+                max_val = local_max;
+                argmax = local_argmax;
+            }
         }
     }
 
@@ -287,6 +329,7 @@ std::shared_ptr<Tensor> max(const std::shared_ptr<Tensor>& a, int dim, bool keep
     std::vector<float> out_data(out_size, -std::numeric_limits<float>::infinity());
     std::vector<int> argmax(out_size, -1);
 
+    #pragma omp parallel for
     for (int i = 0; i < (int)a->data->size(); ++i) {
         int temp_i = i;
         int out_idx = 0;
@@ -301,8 +344,13 @@ std::shared_ptr<Tensor> max(const std::shared_ptr<Tensor>& a, int dim, bool keep
         
         float val = (*a->data)[i];
         if (val > out_data[out_idx]) {
-            out_data[out_idx] = val;
-            argmax[out_idx] = i; 
+            #pragma omp critical
+            {
+                if (val > out_data[out_idx]) {
+                    out_data[out_idx] = val;
+                    argmax[out_idx] = i; 
+                }
+            }
         }
     }
 
@@ -313,9 +361,11 @@ std::shared_ptr<Tensor> max(const std::shared_ptr<Tensor>& a, int dim, bool keep
         out->_prev = {a};
         out->_backward = [out, a, argmax]() {
             if (!a->grad) a->zero_grad();
+            #pragma omp parallel for
             for (int out_idx = 0; out_idx < (int)out->data->size(); ++out_idx) {
                 int winner_idx = argmax[out_idx];
                 if (winner_idx != -1) {
+                    #pragma omp atomic
                     (*a->grad->data)[winner_idx] += (*out->grad->data)[out_idx];
                 }
             }
@@ -328,10 +378,25 @@ std::shared_ptr<Tensor> min(const std::shared_ptr<Tensor>& a, bool keepdim) {
     float min_val = std::numeric_limits<float>::infinity();
     int argmin = -1;
 
-    for (int i = 0; i < (int)a->data->size(); ++i) {
-        if ((*a->data)[i] < min_val) {
-            min_val = (*a->data)[i];
-            argmin = i;
+    #pragma omp parallel
+    {
+        float local_min = std::numeric_limits<float>::infinity();
+        int local_argmin = -1;
+        
+        #pragma omp for
+        for (int i = 0; i < (int)a->data->size(); ++i) {
+            if ((*a->data)[i] < local_min) {
+                local_min = (*a->data)[i];
+                local_argmin = i;
+            }
+        }
+        
+        #pragma omp critical
+        {
+            if (local_min < min_val) {
+                min_val = local_min;
+                argmin = local_argmin;
+            }
         }
     }
 
@@ -378,6 +443,7 @@ std::shared_ptr<Tensor> min(const std::shared_ptr<Tensor>& a, int dim, bool keep
     std::vector<float> out_data(out_size, std::numeric_limits<float>::infinity());
     std::vector<int> argmin(out_size, -1);
 
+    #pragma omp parallel for
     for (int i = 0; i < (int)a->data->size(); ++i) {
         int temp_i = i;
         int out_idx = 0;
@@ -392,8 +458,13 @@ std::shared_ptr<Tensor> min(const std::shared_ptr<Tensor>& a, int dim, bool keep
         
         float val = (*a->data)[i];
         if (val < out_data[out_idx]) {
-            out_data[out_idx] = val;
-            argmin[out_idx] = i; 
+            #pragma omp critical
+            {
+                if (val < out_data[out_idx]) {
+                    out_data[out_idx] = val;
+                    argmin[out_idx] = i; 
+                }
+            }
         }
     }
 
@@ -404,9 +475,11 @@ std::shared_ptr<Tensor> min(const std::shared_ptr<Tensor>& a, int dim, bool keep
         out->_prev = {a};
         out->_backward = [out, a, argmin]() {
             if (!a->grad) a->zero_grad();
+            #pragma omp parallel for
             for (int out_idx = 0; out_idx < (int)out->data->size(); ++out_idx) {
                 int winner_idx = argmin[out_idx];
                 if (winner_idx != -1) {
+                    #pragma omp atomic
                     (*a->grad->data)[winner_idx] += (*out->grad->data)[out_idx];
                 }
             }
@@ -436,9 +509,9 @@ std::shared_ptr<Tensor> var(const std::shared_ptr<Tensor>& a, int dim, bool keep
 }
 
 std::shared_ptr<Tensor> std_dev(const std::shared_ptr<Tensor>& a, bool keepdim, bool unbiased) {
-    return pow_scalar(var(a, keepdim, unbiased), 0.5f);
+    return sqrt(var(a, keepdim, unbiased));
 }
 
 std::shared_ptr<Tensor> std_dev(const std::shared_ptr<Tensor>& a, int dim, bool keepdim, bool unbiased) {
-    return pow_scalar(var(a, dim, keepdim, unbiased), 0.5f);
+    return sqrt(var(a, dim, keepdim, unbiased));
 }

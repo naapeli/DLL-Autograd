@@ -4,6 +4,7 @@
 #include <memory>
 #include <cmath>
 #include <stdexcept>
+#include <omp.h>
 
 
 std::shared_ptr<Tensor> transpose(const std::shared_ptr<Tensor>& a, int dim0, int dim1) {
@@ -34,6 +35,8 @@ std::shared_ptr<Tensor> transpose(const std::shared_ptr<Tensor>& a, int dim0, in
         a_contig_strides[i] = current;
         current *= a->shape[i];
     }
+    
+    #pragma omp parallel for
     for (int i = 0; i < num_elements; ++i) {
         int temp = i;
         int a_idx = 0;
@@ -57,6 +60,8 @@ std::shared_ptr<Tensor> transpose(const std::shared_ptr<Tensor>& a, int dim0, in
             if (!a->grad) a->zero_grad();
             float* a_grad_ptr = a->grad->data->data();
             float* out_grad_ptr = out->grad->data->data();
+            
+            #pragma omp parallel for
             for (int i = 0; i < num_elements; ++i) {
                 int temp = i;
                 int a_idx = 0;
@@ -81,6 +86,8 @@ std::shared_ptr<Tensor> exp(const std::shared_ptr<Tensor>& a) {
     auto out_data = std::make_shared<std::vector<float>>(a->data->size());
     float* a_ptr = a->data->data();
     float* out_ptr = out_data->data();
+    
+    #pragma omp parallel for simd
     for (size_t i = 0; i < a->data->size(); ++i) {
         out_ptr[i] = std::exp(a_ptr[i]);
     }
@@ -93,6 +100,8 @@ std::shared_ptr<Tensor> exp(const std::shared_ptr<Tensor>& a) {
             float* a_grad_ptr = a->grad->data->data();
             float* out_grad_ptr = out->grad->data->data();
             float* out_ptr = out->data->data();
+            
+            #pragma omp parallel for simd
             for (size_t i = 0; i < a->data->size(); ++i) {
                 a_grad_ptr[i] += out_ptr[i] * out_grad_ptr[i];
             }
@@ -105,6 +114,8 @@ std::shared_ptr<Tensor> log(const std::shared_ptr<Tensor>& a) {
     auto out_data = std::make_shared<std::vector<float>>(a->data->size());
     float* a_ptr = a->data->data();
     float* out_ptr = out_data->data();
+    
+    #pragma omp parallel for simd
     for (size_t i = 0; i < a->data->size(); ++i) {
         out_ptr[i] = std::log(a_ptr[i]);
     }
@@ -117,6 +128,8 @@ std::shared_ptr<Tensor> log(const std::shared_ptr<Tensor>& a) {
             float* a_grad_ptr = a->grad->data->data();
             float* out_grad_ptr = out->grad->data->data();
             float* a_ptr = a->data->data();
+            
+            #pragma omp parallel for simd
             for (size_t i = 0; i < a->data->size(); ++i) {
                 a_grad_ptr[i] += out_grad_ptr[i] / (a_ptr[i] + 1e-8f); 
             }
@@ -129,6 +142,8 @@ std::shared_ptr<Tensor> sqrt(const std::shared_ptr<Tensor>& a) {
     auto out_data = std::make_shared<std::vector<float>>(a->data->size());
     float* a_ptr = a->data->data();
     float* out_ptr = out_data->data();
+    
+    #pragma omp parallel for simd
     for (size_t i = 0; i < a->data->size(); ++i) {
         out_ptr[i] = std::sqrt(a_ptr[i]);
     }
@@ -141,6 +156,8 @@ std::shared_ptr<Tensor> sqrt(const std::shared_ptr<Tensor>& a) {
             float* a_grad_ptr = a->grad->data->data();
             float* out_grad_ptr = out->grad->data->data();
             float* out_ptr = out->data->data();
+            
+            #pragma omp parallel for simd
             for (size_t i = 0; i < a->data->size(); ++i) {
                 a_grad_ptr[i] += out_grad_ptr[i] / (2.0f * out_ptr[i] + 1e-8f);
             }
@@ -153,6 +170,8 @@ std::shared_ptr<Tensor> cbrt(const std::shared_ptr<Tensor>& a) {
     auto out_data = std::make_shared<std::vector<float>>(a->data->size());
     float* a_ptr = a->data->data();
     float* out_ptr = out_data->data();
+    
+    #pragma omp parallel for simd
     for (size_t i = 0; i < a->data->size(); ++i) {
         out_ptr[i] = std::cbrt(a_ptr[i]);
     }
@@ -165,6 +184,8 @@ std::shared_ptr<Tensor> cbrt(const std::shared_ptr<Tensor>& a) {
             float* a_grad_ptr = a->grad->data->data();
             float* out_grad_ptr = out->grad->data->data();
             float* out_ptr = out->data->data();
+            
+            #pragma omp parallel for simd
             for (size_t i = 0; i < a->data->size(); ++i) {
                 float y = out_ptr[i];
                 a_grad_ptr[i] += out_grad_ptr[i] / (3.0f * y * y + 1e-8f);
@@ -178,6 +199,8 @@ std::shared_ptr<Tensor> abs(const std::shared_ptr<Tensor>& a) {
     auto out_data = std::make_shared<std::vector<float>>(a->data->size());
     float* a_ptr = a->data->data();
     float* out_ptr = out_data->data();
+    
+    #pragma omp parallel for simd
     for (size_t i = 0; i < a->data->size(); ++i) {
         out_ptr[i] = std::abs(a_ptr[i]);
     }
@@ -190,6 +213,8 @@ std::shared_ptr<Tensor> abs(const std::shared_ptr<Tensor>& a) {
             float* a_grad_ptr = a->grad->data->data();
             float* out_grad_ptr = out->grad->data->data();
             float* a_ptr = a->data->data();
+            
+            #pragma omp parallel for simd
             for (size_t i = 0; i < a->data->size(); ++i) {
                 float val = a_ptr[i];
                 float sign = (val > 0.0f) - (val < 0.0f);
@@ -204,6 +229,8 @@ std::shared_ptr<Tensor> sin(const std::shared_ptr<Tensor>& a) {
     auto out_data = std::make_shared<std::vector<float>>(a->data->size());
     float* a_ptr = a->data->data();
     float* out_ptr = out_data->data();
+    
+    #pragma omp parallel for simd
     for (size_t i = 0; i < a->data->size(); ++i) {
         out_ptr[i] = std::sin(a_ptr[i]);
     }
@@ -216,6 +243,8 @@ std::shared_ptr<Tensor> sin(const std::shared_ptr<Tensor>& a) {
             float* a_grad_ptr = a->grad->data->data();
             float* out_grad_ptr = out->grad->data->data();
             float* a_ptr = a->data->data();
+            
+            #pragma omp parallel for simd
             for (size_t i = 0; i < a->data->size(); ++i) {
                 a_grad_ptr[i] += out_grad_ptr[i] * std::cos(a_ptr[i]);
             }
@@ -228,6 +257,8 @@ std::shared_ptr<Tensor> cos(const std::shared_ptr<Tensor>& a) {
     auto out_data = std::make_shared<std::vector<float>>(a->data->size());
     float* a_ptr = a->data->data();
     float* out_ptr = out_data->data();
+    
+    #pragma omp parallel for simd
     for (size_t i = 0; i < a->data->size(); ++i) {
         out_ptr[i] = std::cos(a_ptr[i]);
     }
@@ -240,6 +271,8 @@ std::shared_ptr<Tensor> cos(const std::shared_ptr<Tensor>& a) {
             float* a_grad_ptr = a->grad->data->data();
             float* out_grad_ptr = out->grad->data->data();
             float* a_ptr = a->data->data();
+            
+            #pragma omp parallel for simd
             for (size_t i = 0; i < a->data->size(); ++i) {
                 a_grad_ptr[i] += out_grad_ptr[i] * -std::sin(a_ptr[i]);
             }
@@ -252,6 +285,8 @@ std::shared_ptr<Tensor> relu(const std::shared_ptr<Tensor>& a) {
     auto out_data = std::make_shared<std::vector<float>>(a->data->size());
     float* a_ptr = a->data->data();
     float* out_ptr = out_data->data();
+    
+    #pragma omp parallel for simd
     for (size_t i = 0; i < a->data->size(); ++i) {
         out_ptr[i] = a_ptr[i] > 0.0f ? a_ptr[i] : 0.0f;
     }
@@ -264,6 +299,8 @@ std::shared_ptr<Tensor> relu(const std::shared_ptr<Tensor>& a) {
             float* a_grad_ptr = a->grad->data->data();
             float* out_grad_ptr = out->grad->data->data();
             float* out_ptr = out->data->data();
+            
+            #pragma omp parallel for simd
             for (size_t i = 0; i < a->data->size(); ++i) {
                 if (out_ptr[i] > 0.0f) {
                     a_grad_ptr[i] += out_grad_ptr[i];
@@ -278,6 +315,8 @@ std::shared_ptr<Tensor> tanh(const std::shared_ptr<Tensor>& a) {
     auto out_data = std::make_shared<std::vector<float>>(a->data->size());
     float* a_ptr = a->data->data();
     float* out_ptr = out_data->data();
+    
+    #pragma omp parallel for simd
     for (size_t i = 0; i < a->data->size(); ++i) {
         out_ptr[i] = std::tanh(a_ptr[i]);
     }
@@ -290,6 +329,8 @@ std::shared_ptr<Tensor> tanh(const std::shared_ptr<Tensor>& a) {
             float* a_grad_ptr = a->grad->data->data();
             float* out_grad_ptr = out->grad->data->data();
             float* out_ptr = out->data->data();
+            
+            #pragma omp parallel for simd
             for (size_t i = 0; i < a->data->size(); ++i) {
                 float y = out_ptr[i];
                 a_grad_ptr[i] += (1.0f - y * y) * out_grad_ptr[i];
@@ -303,6 +344,8 @@ std::shared_ptr<Tensor> sigmoid(const std::shared_ptr<Tensor>& a) {
     auto out_data = std::make_shared<std::vector<float>>(a->data->size());
     float* a_ptr = a->data->data();
     float* out_ptr = out_data->data();
+    
+    #pragma omp parallel for simd
     for (size_t i = 0; i < a->data->size(); ++i) {
         out_ptr[i] = 1.0f / (1.0f + std::exp(-a_ptr[i]));
     }
@@ -315,6 +358,8 @@ std::shared_ptr<Tensor> sigmoid(const std::shared_ptr<Tensor>& a) {
             float* a_grad_ptr = a->grad->data->data();
             float* out_grad_ptr = out->grad->data->data();
             float* out_ptr = out->data->data();
+            
+            #pragma omp parallel for simd
             for (size_t i = 0; i < a->data->size(); ++i) {
                 float y = out_ptr[i];
                 a_grad_ptr[i] += y * (1.0f - y) * out_grad_ptr[i];
