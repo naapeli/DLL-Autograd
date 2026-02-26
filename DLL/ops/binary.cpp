@@ -1,7 +1,12 @@
 #include "ops/binary.h"
 #include <stdexcept>
 #include <cmath>
+#include <omp.h>
 
+
+constexpr int BLOCK_M = 64;
+constexpr int BLOCK_K = 64;
+constexpr int BLOCK_N = 256;
 
 struct BroadcastInfo {
     std::vector<int> out_shape;
@@ -260,71 +265,218 @@ std::shared_ptr<Tensor> rdiv_scalar(const std::shared_ptr<Tensor>& a, float scal
     return mul_scalar(pow_scalar(a, -1.0f), scalar);
 }
 
+// std::shared_ptr<Tensor> matmul(const std::shared_ptr<Tensor>& a, const std::shared_ptr<Tensor>& b) {
+//     int ndim_a = a->shape.size();
+//     int ndim_b = b->shape.size();
+
+//     if (ndim_a < 2 || ndim_b < 2) {
+//         throw std::invalid_argument("Matmul requires both tensors to have at least 2 dimensions.");
+//     }
+
+//     int M = a->shape[ndim_a - 2];
+//     int K_a = a->shape[ndim_a - 1];
+//     int K_b = b->shape[ndim_b - 2];
+//     int N = b->shape[ndim_b - 1];
+
+//     if (K_a != K_b) {
+//         throw std::invalid_argument("Matmul inner dimensions must match.");
+//     }
+//     int K = K_a;
+
+//     int batch_ndim_a = ndim_a - 2;
+//     int batch_ndim_b = ndim_b - 2;
+//     int batch_ndim = std::max(batch_ndim_a, batch_ndim_b);
+
+//     std::vector<int> out_batch_shape(batch_ndim);
+//     std::vector<int> a_batch_strides(batch_ndim, 0);
+//     std::vector<int> b_batch_strides(batch_ndim, 0);
+//     std::vector<int> out_batch_strides(batch_ndim, 0);
+
+//     for (int i = 0; i < batch_ndim; ++i) {
+//         int dim_a = (i < batch_ndim - batch_ndim_a) ? 1 : a->shape[i - (batch_ndim - batch_ndim_a)];
+//         int dim_b = (i < batch_ndim - batch_ndim_b) ? 1 : b->shape[i - (batch_ndim - batch_ndim_b)];
+
+//         if (dim_a != dim_b && dim_a != 1 && dim_b != 1) {
+//             throw std::invalid_argument("Matmul batch shapes are not broadcastable.");
+//         }
+//         out_batch_shape[i] = std::max(dim_a, dim_b);
+
+//         int stride_a = (i < batch_ndim - batch_ndim_a || dim_a == 1) ? 0 : a->strides[i - (batch_ndim - batch_ndim_a)];
+//         int stride_b = (i < batch_ndim - batch_ndim_b || dim_b == 1) ? 0 : b->strides[i - (batch_ndim - batch_ndim_b)];
+
+//         a_batch_strides[i] = stride_a;
+//         b_batch_strides[i] = stride_b;
+//     }
+
+//     int num_matrices = 1;
+//     for (int i = batch_ndim - 1; i >= 0; --i) {
+//         out_batch_strides[i] = num_matrices;
+//         num_matrices *= out_batch_shape[i];
+//     }
+
+//     std::vector<int> out_shape = out_batch_shape;
+//     out_shape.push_back(M);
+//     out_shape.push_back(N);
+
+//     int out_size = num_matrices * M * N;
+//     std::vector<float> out_data(out_size, 0.0f);
+
+//     int stride_a_M = a->strides[ndim_a - 2];
+//     int stride_a_K = a->strides[ndim_a - 1];
+//     int stride_b_K = b->strides[ndim_b - 2];
+//     int stride_b_N = b->strides[ndim_b - 1];
+
+//     float* a_ptr = a->data->data();
+//     float* b_ptr = b->data->data();
+//     float* out_ptr = out_data.data();
+
+//     for (int b_idx = 0; b_idx < num_matrices; ++b_idx) {
+//         int temp = b_idx;
+//         int offset_a = 0;
+//         int offset_b = 0;
+//         for (int d = 0; d < batch_ndim; ++d) {
+//             int coord = temp / out_batch_strides[d];
+//             temp %= out_batch_strides[d];
+//             offset_a += coord * a_batch_strides[d];
+//             offset_b += coord * b_batch_strides[d];
+//         }
+
+//         int offset_out = b_idx * M * N;
+
+//         for (int m = 0; m < M; ++m) {
+//             int a_m_offset = offset_a + m * stride_a_M;
+//             int out_m_offset = offset_out + m * N;
+            
+//             for (int k = 0; k < K; ++k) {
+//                 float a_val = a_ptr[a_m_offset + k * stride_a_K];
+//                 int b_k_offset = offset_b + k * stride_b_K;
+                
+//                 for (int n = 0; n < N; ++n) {
+//                     out_ptr[out_m_offset + n] += a_val * b_ptr[b_k_offset + n * stride_b_N];
+//                 }
+//             }
+//         }
+//     }
+
+//     auto out = std::make_shared<Tensor>(out_data, out_shape);
+
+//     if (a->requires_grad || b->requires_grad) {
+//         out->requires_grad = true;
+//         out->_prev = {a, b};
+//         out->_backward = [out, a, b, num_matrices, M, K, N, batch_ndim, out_batch_strides, 
+//                           a_batch_strides, b_batch_strides, stride_a_M, stride_a_K, 
+//                           stride_b_K, stride_b_N]() {
+//             if (a->requires_grad && !a->grad) a->zero_grad();
+//             if (b->requires_grad && !b->grad) b->zero_grad();
+
+//             float* a_ptr = a->data->data();
+//             float* b_ptr = b->data->data();
+//             float* out_grad_ptr = out->grad->data->data();
+//             float* a_grad_ptr = a->requires_grad ? a->grad->data->data() : nullptr;
+//             float* b_grad_ptr = b->requires_grad ? b->grad->data->data() : nullptr;
+
+//             for (int b_idx = 0; b_idx < num_matrices; ++b_idx) {
+//                 int temp = b_idx;
+//                 int offset_a = 0;
+//                 int offset_b = 0;
+//                 for (int d = 0; d < batch_ndim; ++d) {
+//                     int coord = temp / out_batch_strides[d];
+//                     temp %= out_batch_strides[d];
+//                     offset_a += coord * a_batch_strides[d];
+//                     offset_b += coord * b_batch_strides[d];
+//                 }
+
+//                 int offset_out = b_idx * M * N;
+
+//                 if (a->requires_grad) {
+//                     for (int m = 0; m < M; ++m) {
+//                         int grad_m_offset = offset_out + m * N;
+//                         int a_grad_m_offset = offset_a + m * stride_a_M;
+                        
+//                         for (int k = 0; k < K; ++k) {
+//                             float sum = 0.0f;
+//                             int b_k_offset = offset_b + k * stride_b_K;
+                            
+//                             for (int n = 0; n < N; ++n) {
+//                                 sum += out_grad_ptr[grad_m_offset + n] * b_ptr[b_k_offset + n * stride_b_N];
+//                             }
+//                             a_grad_ptr[a_grad_m_offset + k * stride_a_K] += sum;
+//                         }
+//                     }
+//                 }
+
+//                 if (b->requires_grad) {
+//                     for (int m = 0; m < M; ++m) {
+//                         int a_m_offset = offset_a + m * stride_a_M;
+//                         int grad_m_offset = offset_out + m * N;
+                        
+//                         for (int k = 0; k < K; ++k) {
+//                             float a_val = a_ptr[a_m_offset + k * stride_a_K];
+//                             int b_grad_k_offset = offset_b + k * stride_b_K;
+                            
+//                             for (int n = 0; n < N; ++n) {
+//                                 b_grad_ptr[b_grad_k_offset + n * stride_b_N] += a_val * out_grad_ptr[grad_m_offset + n];
+//                             }
+//                         }
+//                     }
+//                 }
+//             }
+//         };
+//     }
+//     return out;
+// }
+
+
 std::shared_ptr<Tensor> matmul(const std::shared_ptr<Tensor>& a, const std::shared_ptr<Tensor>& b) {
     int ndim_a = a->shape.size();
     int ndim_b = b->shape.size();
-
     if (ndim_a < 2 || ndim_b < 2) {
         throw std::invalid_argument("Matmul requires both tensors to have at least 2 dimensions.");
     }
-
     int M = a->shape[ndim_a - 2];
     int K_a = a->shape[ndim_a - 1];
     int K_b = b->shape[ndim_b - 2];
     int N = b->shape[ndim_b - 1];
-
     if (K_a != K_b) {
         throw std::invalid_argument("Matmul inner dimensions must match.");
     }
     int K = K_a;
-
     int batch_ndim_a = ndim_a - 2;
     int batch_ndim_b = ndim_b - 2;
     int batch_ndim = std::max(batch_ndim_a, batch_ndim_b);
-
     std::vector<int> out_batch_shape(batch_ndim);
     std::vector<int> a_batch_strides(batch_ndim, 0);
     std::vector<int> b_batch_strides(batch_ndim, 0);
     std::vector<int> out_batch_strides(batch_ndim, 0);
-
     for (int i = 0; i < batch_ndim; ++i) {
         int dim_a = (i < batch_ndim - batch_ndim_a) ? 1 : a->shape[i - (batch_ndim - batch_ndim_a)];
         int dim_b = (i < batch_ndim - batch_ndim_b) ? 1 : b->shape[i - (batch_ndim - batch_ndim_b)];
-
         if (dim_a != dim_b && dim_a != 1 && dim_b != 1) {
             throw std::invalid_argument("Matmul batch shapes are not broadcastable.");
         }
         out_batch_shape[i] = std::max(dim_a, dim_b);
-
         int stride_a = (i < batch_ndim - batch_ndim_a || dim_a == 1) ? 0 : a->strides[i - (batch_ndim - batch_ndim_a)];
         int stride_b = (i < batch_ndim - batch_ndim_b || dim_b == 1) ? 0 : b->strides[i - (batch_ndim - batch_ndim_b)];
-
         a_batch_strides[i] = stride_a;
         b_batch_strides[i] = stride_b;
     }
-
     int num_matrices = 1;
     for (int i = batch_ndim - 1; i >= 0; --i) {
         out_batch_strides[i] = num_matrices;
         num_matrices *= out_batch_shape[i];
     }
-
     std::vector<int> out_shape = out_batch_shape;
     out_shape.push_back(M);
     out_shape.push_back(N);
-
     int out_size = num_matrices * M * N;
     std::vector<float> out_data(out_size, 0.0f);
-
     int stride_a_M = a->strides[ndim_a - 2];
     int stride_a_K = a->strides[ndim_a - 1];
     int stride_b_K = b->strides[ndim_b - 2];
     int stride_b_N = b->strides[ndim_b - 1];
-
     float* a_ptr = a->data->data();
     float* b_ptr = b->data->data();
     float* out_ptr = out_data.data();
-
     for (int b_idx = 0; b_idx < num_matrices; ++b_idx) {
         int temp = b_idx;
         int offset_a = 0;
@@ -335,82 +487,97 @@ std::shared_ptr<Tensor> matmul(const std::shared_ptr<Tensor>& a, const std::shar
             offset_a += coord * a_batch_strides[d];
             offset_b += coord * b_batch_strides[d];
         }
-
         int offset_out = b_idx * M * N;
-
-        for (int m = 0; m < M; ++m) {
-            int a_m_offset = offset_a + m * stride_a_M;
-            int out_m_offset = offset_out + m * N;
-            
-            for (int k = 0; k < K; ++k) {
-                float a_val = a_ptr[a_m_offset + k * stride_a_K];
-                int b_k_offset = offset_b + k * stride_b_K;
-                
-                for (int n = 0; n < N; ++n) {
-                    out_ptr[out_m_offset + n] += a_val * b_ptr[b_k_offset + n * stride_b_N];
+        #pragma omp parallel for schedule(dynamic)
+        for (int m_b = 0; m_b < M; m_b += BLOCK_M) {
+            for (int k_b = 0; k_b < K; k_b += BLOCK_K) {
+                for (int n_b = 0; n_b < N; n_b += BLOCK_N) {
+                    int m_end = std::min(m_b + BLOCK_M, M);
+                    int k_end = std::min(k_b + BLOCK_K, K);
+                    int n_end = std::min(n_b + BLOCK_N, N);
+                    for (int m = m_b; m < m_end; ++m) {
+                        int a_m_offset = offset_a + m * stride_a_M;
+                        int out_m_offset = offset_out + m * N;
+                        for (int k = k_b; k < k_end; ++k) {
+                            float a_val = a_ptr[a_m_offset + k * stride_a_K];
+                            int b_k_offset = offset_b + k * stride_b_K;
+                            #pragma omp simd
+                            for (int n = n_b; n < n_end; ++n) {
+                                out_ptr[out_m_offset + n] += a_val * b_ptr[b_k_offset + n * stride_b_N];
+                            }
+                        }
+                    }
                 }
             }
         }
     }
-
     auto out = std::make_shared<Tensor>(out_data, out_shape);
-
     if (a->requires_grad || b->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a, b};
-        out->_backward = [out, a, b, num_matrices, M, K, N, batch_ndim, out_batch_strides, 
-                          a_batch_strides, b_batch_strides, stride_a_M, stride_a_K, 
-                          stride_b_K, stride_b_N]() {
+        out->_backward = [out, a, b, num_matrices, M, K, N, batch_ndim, out_batch_strides, a_batch_strides, b_batch_strides, stride_a_M, stride_a_K, stride_b_K, stride_b_N]() {
             if (a->requires_grad && !a->grad) a->zero_grad();
             if (b->requires_grad && !b->grad) b->zero_grad();
-
             float* a_ptr = a->data->data();
             float* b_ptr = b->data->data();
             float* out_grad_ptr = out->grad->data->data();
             float* a_grad_ptr = a->requires_grad ? a->grad->data->data() : nullptr;
             float* b_grad_ptr = b->requires_grad ? b->grad->data->data() : nullptr;
-
             for (int b_idx = 0; b_idx < num_matrices; ++b_idx) {
                 int temp = b_idx;
-                int offset_a = 0;
-                int offset_b = 0;
+                int offset_a = 0, offset_b = 0;
                 for (int d = 0; d < batch_ndim; ++d) {
                     int coord = temp / out_batch_strides[d];
                     temp %= out_batch_strides[d];
                     offset_a += coord * a_batch_strides[d];
                     offset_b += coord * b_batch_strides[d];
                 }
-
                 int offset_out = b_idx * M * N;
-
                 if (a->requires_grad) {
-                    for (int m = 0; m < M; ++m) {
-                        int grad_m_offset = offset_out + m * N;
-                        int a_grad_m_offset = offset_a + m * stride_a_M;
-                        
-                        for (int k = 0; k < K; ++k) {
-                            float sum = 0.0f;
-                            int b_k_offset = offset_b + k * stride_b_K;
-                            
-                            for (int n = 0; n < N; ++n) {
-                                sum += out_grad_ptr[grad_m_offset + n] * b_ptr[b_k_offset + n * stride_b_N];
+                    #pragma omp parallel for schedule(dynamic)
+                    for (int m_b = 0; m_b < M; m_b += BLOCK_M) {
+                        for (int k_b = 0; k_b < K; k_b += BLOCK_K) {
+                            for (int n_b = 0; n_b < N; n_b += BLOCK_N) {
+                                int m_end = std::min(m_b + BLOCK_M, M);
+                                int k_end = std::min(k_b + BLOCK_K, K);
+                                int n_end = std::min(n_b + BLOCK_N, N);
+                                for (int m = m_b; m < m_end; ++m) {
+                                    int grad_m_offset = offset_out + m * N;
+                                    int a_grad_m_offset = offset_a + m * stride_a_M;
+                                    for (int k = k_b; k < k_end; ++k) {
+                                        float sum = 0.0f;
+                                        int b_k_offset = offset_b + k * stride_b_K;
+                                        #pragma omp simd reduction(+:sum)
+                                        for (int n = n_b; n < n_end; ++n) {
+                                            sum += out_grad_ptr[grad_m_offset + n] * b_ptr[b_k_offset + n * stride_b_N];
+                                        }
+                                        a_grad_ptr[a_grad_m_offset + k * stride_a_K] += sum;
+                                    }
+                                }
                             }
-                            a_grad_ptr[a_grad_m_offset + k * stride_a_K] += sum;
                         }
                     }
                 }
-
                 if (b->requires_grad) {
-                    for (int m = 0; m < M; ++m) {
-                        int a_m_offset = offset_a + m * stride_a_M;
-                        int grad_m_offset = offset_out + m * N;
-                        
-                        for (int k = 0; k < K; ++k) {
-                            float a_val = a_ptr[a_m_offset + k * stride_a_K];
-                            int b_grad_k_offset = offset_b + k * stride_b_K;
-                            
-                            for (int n = 0; n < N; ++n) {
-                                b_grad_ptr[b_grad_k_offset + n * stride_b_N] += a_val * out_grad_ptr[grad_m_offset + n];
+                    #pragma omp parallel for schedule(dynamic)
+                    for (int k_b = 0; k_b < K; k_b += BLOCK_K) {
+                        for (int m_b = 0; m_b < M; m_b += BLOCK_M) {
+                            for (int n_b = 0; n_b < N; n_b += BLOCK_N) {
+                                int m_end = std::min(m_b + BLOCK_M, M);
+                                int k_end = std::min(k_b + BLOCK_K, K);
+                                int n_end = std::min(n_b + BLOCK_N, N);
+                                for (int m = m_b; m < m_end; ++m) {
+                                    int a_m_offset = offset_a + m * stride_a_M;
+                                    int grad_m_offset = offset_out + m * N;
+                                    for (int k = k_b; k < k_end; ++k) {
+                                        float a_val = a_ptr[a_m_offset + k * stride_a_K];
+                                        int b_grad_k_offset = offset_b + k * stride_b_K;
+                                        #pragma omp simd
+                                        for (int n = n_b; n < n_end; ++n) {
+                                            b_grad_ptr[b_grad_k_offset + n * stride_b_N] += a_val * out_grad_ptr[grad_m_offset + n];
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
