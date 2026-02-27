@@ -2,7 +2,7 @@
 #include "Random/mersenneTwister.h"
 #include <cmath>
 
-namespace random {
+namespace randomGen {
     namespace {
         MersenneTwister engine(5489U);
         bool has_spare = false;

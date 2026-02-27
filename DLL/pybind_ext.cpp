@@ -80,8 +80,8 @@ PYBIND11_MODULE(_C, m) {
         .def("std", [](const std::shared_ptr<Tensor>& a, bool keepdim, bool unbiased) { return std_dev(a, keepdim, unbiased); }, py::arg("keepdim") = false, py::arg("unbiased") = true)
         .def("std", [](const std::shared_ptr<Tensor>& a, int dim, bool keepdim, bool unbiased) { return std_dev(a, dim, keepdim, unbiased); }, py::arg("dim"), py::arg("keepdim") = false, py::arg("unbiased") = true);
     
-    m.def("rand", [](std::vector<int> shape, float min = 0.0, float max = 1.0) { return random::rand(shape, min, max); }, py::arg("shape"), py::arg("min") = 0, py::arg("max") = 1);
-    m.def("rand", [](std::vector<int> shape, uint32_t seed, float min = 0.0, float max = 1.0) { return random::rand(shape, seed, min, max); }, py::arg("shape"), py::arg("seed"), py::arg("min") = 0, py::arg("max") = 1);
-    m.def("randn", [](std::vector<int> shape, float mean = 0.0, float stddev = 1.0) { return random::randn(shape, mean, stddev); }, py::arg("shape"), py::arg("mu") = 0, py::arg("std") = 1);
-    m.def("randn", [](std::vector<int> shape, uint32_t seed, float mean = 0.0, float stddev = 1.0) { return random::rand(shape, seed, mean, stddev); }, py::arg("shape"), py::arg("seed"), py::arg("mu") = 0, py::arg("std") = 1);
+    m.def("rand", [](std::vector<int> shape, float min = 0.0, float max = 1.0) { return randomTensor::rand(shape, min, max); }, py::arg("shape"), py::arg("min") = 0, py::arg("max") = 1);
+    m.def("rand", [](std::vector<int> shape, uint32_t seed, float min = 0.0, float max = 1.0) { return randomTensor::rand(shape, seed, min, max); }, py::arg("shape"), py::arg("seed"), py::arg("min") = 0, py::arg("max") = 1);
+    m.def("randn", [](std::vector<int> shape, float mean = 0.0, float stddev = 1.0) { return randomTensor::randn(shape, mean, stddev); }, py::arg("shape"), py::arg("mu") = 0, py::arg("std") = 1);
+    m.def("randn", [](std::vector<int> shape, uint32_t seed, float mean = 0.0, float stddev = 1.0) { return randomTensor::rand(shape, seed, mean, stddev); }, py::arg("shape"), py::arg("seed"), py::arg("mu") = 0, py::arg("std") = 1);
 }
