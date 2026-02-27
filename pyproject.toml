@@ -5,9 +5,12 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "git-filter-repo>=2.47.0",
+    "matplotlib>=3.10.8",
     "numpy>=2.4.2",
     "pybind11>=3.0.2",
     "pybind11-stubgen>=2.5.5",
     "pytest>=9.0.2",
+    "scipy>=1.17.1",
     "torch>=2.10.0",
 ]

@@ -4,11 +4,12 @@
 #include "ops/binary.h"
 #include "ops/unary.h"
 #include "ops/reduce.h"
+#include "Random/randomTensor.h"
 
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(_c_tensor, m) {
+PYBIND11_MODULE(_C, m) {
     py::class_<Tensor, std::shared_ptr<Tensor>>(m, "Tensor")
         .def(py::init<std::vector<float>, std::vector<int>>(), py::arg("data"), py::arg("shape"))
         
@@ -77,6 +78,10 @@ PYBIND11_MODULE(_c_tensor, m) {
         .def("var", [](const std::shared_ptr<Tensor>& a, bool keepdim, bool unbiased) { return var(a, keepdim, unbiased); }, py::arg("keepdim") = false, py::arg("unbiased") = true)
         .def("var", [](const std::shared_ptr<Tensor>& a, int dim, bool keepdim, bool unbiased) { return var(a, dim, keepdim, unbiased); }, py::arg("dim"), py::arg("keepdim") = false, py::arg("unbiased") = true)
         .def("std", [](const std::shared_ptr<Tensor>& a, bool keepdim, bool unbiased) { return std_dev(a, keepdim, unbiased); }, py::arg("keepdim") = false, py::arg("unbiased") = true)
-        .def("std", [](const std::shared_ptr<Tensor>& a, int dim, bool keepdim, bool unbiased) { return std_dev(a, dim, keepdim, unbiased); }, py::arg("dim"), py::arg("keepdim") = false, py::arg("unbiased") = true)
-        ;
+        .def("std", [](const std::shared_ptr<Tensor>& a, int dim, bool keepdim, bool unbiased) { return std_dev(a, dim, keepdim, unbiased); }, py::arg("dim"), py::arg("keepdim") = false, py::arg("unbiased") = true);
+    
+    m.def("rand", [](std::vector<int> shape, float min = 0.0, float max = 1.0) { return random::rand(shape, min, max); }, py::arg("shape"), py::arg("min") = 0, py::arg("max") = 1);
+    m.def("rand", [](std::vector<int> shape, uint32_t seed, float min = 0.0, float max = 1.0) { return random::rand(shape, seed, min, max); }, py::arg("shape"), py::arg("seed"), py::arg("min") = 0, py::arg("max") = 1);
+    m.def("randn", [](std::vector<int> shape, float mean = 0.0, float stddev = 1.0) { return random::randn(shape, mean, stddev); }, py::arg("shape"), py::arg("mu") = 0, py::arg("std") = 1);
+    m.def("randn", [](std::vector<int> shape, uint32_t seed, float mean = 0.0, float stddev = 1.0) { return random::rand(shape, seed, mean, stddev); }, py::arg("shape"), py::arg("seed"), py::arg("mu") = 0, py::arg("std") = 1);
 }
