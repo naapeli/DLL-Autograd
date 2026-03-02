@@ -1,8 +1,10 @@
 #include "Random/random.h"
 #include <cmath>
+#include <random>
 
 namespace randomGen {
-    Xoshiro256 engine(5489ULL);
+    std::random_device rd;
+    Xoshiro256 engine(rd());
 
     void set_seed(uint32_t seed) {
         engine = Xoshiro256(static_cast<uint64_t>(seed));

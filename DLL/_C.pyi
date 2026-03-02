@@ -1,7 +1,7 @@
 from __future__ import annotations
 import collections.abc
 import typing
-__all__: list[str] = ['Tensor', 'rand', 'randn']
+__all__: list[str] = ['Tensor', 'rand', 'randn', 'seed']
 class Tensor:
     requires_grad: bool
     @typing.overload
@@ -133,10 +133,9 @@ class Tensor:
     @property
     def shape(self) -> list[int]:
         ...
-    @property
-    def strides(self) -> list[int]:
-        ...
 def rand(shape: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex], min: typing.SupportsFloat | typing.SupportsIndex = 0, max: typing.SupportsFloat | typing.SupportsIndex = 1) -> Tensor:
     ...
 def randn(shape: collections.abc.Sequence[typing.SupportsInt | typing.SupportsIndex], mu: typing.SupportsFloat | typing.SupportsIndex = 0, std: typing.SupportsFloat | typing.SupportsIndex = 1) -> Tensor:
+    ...
+def seed(seed: typing.SupportsInt | typing.SupportsIndex) -> None:
     ...

@@ -5,7 +5,6 @@
 #include <limits>
 #include <omp.h>
 
-
 std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, bool keepdim) {
     float total = 0;
     
@@ -56,6 +55,13 @@ std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, int dim, bool keep
         current_stride *= out_shape[i];
     }
 
+    std::vector<int> a_strides(a->shape.size());
+    int a_current_stride = 1;
+    for (int i = (int)a->shape.size() - 1; i >= 0; --i) {
+        a_strides[i] = a_current_stride;
+        a_current_stride *= a->shape[i];
+    }
+
     std::vector<float> out_data(out_size, 0.0f);
     
     #pragma omp parallel for
@@ -63,8 +69,8 @@ std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, int dim, bool keep
         int temp_i = i;
         int out_idx = 0;
         for (int d = 0; d < (int)a->shape.size(); ++d) {
-            int coord = (temp_i / a->strides[d]) % a->shape[d];
-            temp_i %= a->strides[d];
+            int coord = (temp_i / a_strides[d]) % a->shape[d];
+            temp_i %= a_strides[d];
             if (d != dim) {
                 int out_d = (keepdim || d < dim) ? d : d - 1;
                 out_idx += coord * out_strides[out_d];
@@ -79,7 +85,7 @@ std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, int dim, bool keep
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a, dim, out_strides, keepdim]() {
+        out->_backward = [out, a, dim, out_strides, a_strides, keepdim]() {
             if (!a->grad) a->zero_grad();            
             
             #pragma omp parallel for
@@ -87,14 +93,13 @@ std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, int dim, bool keep
                 int temp_i = i;
                 int out_idx = 0;
                 for (int d = 0; d < (int)a->shape.size(); ++d) {
-                    int coord = (temp_i / a->strides[d]) % a->shape[d];
-                    temp_i %= a->strides[d];
+                    int coord = (temp_i / a_strides[d]) % a->shape[d];
+                    temp_i %= a_strides[d];
                     if (d != dim) {
                         int out_d = (keepdim || d < dim) ? d : d - 1;
                         out_idx += coord * out_strides[out_d];
                     }
                 }
-                // No atomic needed here because 'i' is unique for every thread
                 (*a->grad->data)[i] += (*out->grad->data)[out_idx];
             }
         };
@@ -167,6 +172,14 @@ std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, int dim, bool kee
         out_strides[i] = current_stride;
         current_stride *= out_shape[i];
     }
+
+    std::vector<int> a_strides(a->shape.size());
+    int a_current_stride = 1;
+    for (int i = (int)a->shape.size() - 1; i >= 0; --i) {
+        a_strides[i] = a_current_stride;
+        a_current_stride *= a->shape[i];
+    }
+
     std::vector<float> out_data(out_size, 1.0f);
     
     #pragma omp parallel for
@@ -174,8 +187,8 @@ std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, int dim, bool kee
         int temp_i = i;
         int out_idx = 0;
         for (int d = 0; d < (int)a->shape.size(); ++d) {
-            int coord = (temp_i / a->strides[d]) % a->shape[d];
-            temp_i %= a->strides[d];
+            int coord = (temp_i / a_strides[d]) % a->shape[d];
+            temp_i %= a_strides[d];
             if (d != dim) {
                 int out_d = (keepdim || d < dim) ? d : d - 1;
                 out_idx += coord * out_strides[out_d];
@@ -188,7 +201,7 @@ std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, int dim, bool kee
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a, dim, out_strides, keepdim]() {
+        out->_backward = [out, a, dim, out_strides, a_strides, keepdim]() {
             if (!a->grad) a->zero_grad();
             int out_size = out->data->size();
             std::vector<int> zero_counts(out_size, 0);
@@ -199,8 +212,8 @@ std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, int dim, bool kee
                 int temp_i = i;
                 int out_idx = 0;
                 for (int d = 0; d < (int)a->shape.size(); ++d) {
-                    int coord = (temp_i / a->strides[d]) % a->shape[d];
-                    temp_i %= a->strides[d];
+                    int coord = (temp_i / a_strides[d]) % a->shape[d];
+                    temp_i %= a_strides[d];
                     if (d != dim) {
                         int out_d = (keepdim || d < dim) ? d : d - 1;
                         out_idx += coord * out_strides[out_d];
@@ -221,8 +234,8 @@ std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, int dim, bool kee
                 int temp_i = i;
                 int out_idx = 0;
                 for (int d = 0; d < (int)a->shape.size(); ++d) {
-                    int coord = (temp_i / a->strides[d]) % a->shape[d];
-                    temp_i %= a->strides[d];
+                    int coord = (temp_i / a_strides[d]) % a->shape[d];
+                    temp_i %= a_strides[d];
                     if (d != dim) {
                         int out_d = (keepdim || d < dim) ? d : d - 1;
                         out_idx += coord * out_strides[out_d];
@@ -326,6 +339,13 @@ std::shared_ptr<Tensor> max(const std::shared_ptr<Tensor>& a, int dim, bool keep
         current_stride *= out_shape[i];
     }
 
+    std::vector<int> a_strides(a->shape.size());
+    int a_current_stride = 1;
+    for (int i = (int)a->shape.size() - 1; i >= 0; --i) {
+        a_strides[i] = a_current_stride;
+        a_current_stride *= a->shape[i];
+    }
+
     std::vector<float> out_data(out_size, -std::numeric_limits<float>::infinity());
     std::vector<int> argmax(out_size, -1);
 
@@ -334,8 +354,8 @@ std::shared_ptr<Tensor> max(const std::shared_ptr<Tensor>& a, int dim, bool keep
         int temp_i = i;
         int out_idx = 0;
         for (int d = 0; d < (int)a->shape.size(); ++d) {
-            int coord = (temp_i / a->strides[d]) % a->shape[d];
-            temp_i %= a->strides[d];
+            int coord = (temp_i / a_strides[d]) % a->shape[d];
+            temp_i %= a_strides[d];
             if (d != dim) {
                 int out_d = (keepdim || d < dim) ? d : d - 1;
                 out_idx += coord * out_strides[out_d];
@@ -440,6 +460,13 @@ std::shared_ptr<Tensor> min(const std::shared_ptr<Tensor>& a, int dim, bool keep
         current_stride *= out_shape[i];
     }
 
+    std::vector<int> a_strides(a->shape.size());
+    int a_current_stride = 1;
+    for (int i = (int)a->shape.size() - 1; i >= 0; --i) {
+        a_strides[i] = a_current_stride;
+        a_current_stride *= a->shape[i];
+    }
+
     std::vector<float> out_data(out_size, std::numeric_limits<float>::infinity());
     std::vector<int> argmin(out_size, -1);
 
@@ -448,8 +475,8 @@ std::shared_ptr<Tensor> min(const std::shared_ptr<Tensor>& a, int dim, bool keep
         int temp_i = i;
         int out_idx = 0;
         for (int d = 0; d < (int)a->shape.size(); ++d) {
-            int coord = (temp_i / a->strides[d]) % a->shape[d];
-            temp_i %= a->strides[d];
+            int coord = (temp_i / a_strides[d]) % a->shape[d];
+            temp_i %= a_strides[d];
             if (d != dim) {
                 int out_d = (keepdim || d < dim) ? d : d - 1;
                 out_idx += coord * out_strides[out_d];

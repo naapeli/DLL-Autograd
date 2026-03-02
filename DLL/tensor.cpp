@@ -4,7 +4,7 @@
 #include <iomanip>
 #include <string>
 #include <set>
-
+#include <vector>
 
 Tensor::Tensor(std::vector<float> d, std::vector<int> s) : shape(s) {
     data = std::make_shared<std::vector<float>>(d);
@@ -14,21 +14,14 @@ Tensor::Tensor(std::vector<float> d, std::vector<int> s) : shape(s) {
     if (data->size() != total_elements) {
         throw std::invalid_argument("Data size does not match shape.");
     }
-
-    strides.resize(shape.size());
-    int current_stride = 1;
-    for (int i = shape.size() - 1; i >= 0; --i) {
-        strides[i] = current_stride;
-        current_stride *= shape[i];
-    }
 }
 
-Tensor::Tensor(std::shared_ptr<std::vector<float>> shared_data, std::vector<int> s, std::vector<int> st) 
-    : data(shared_data), shape(s), strides(st) {}
+Tensor::Tensor(std::shared_ptr<std::vector<float>> shared_data, std::vector<int> s) 
+    : data(shared_data), shape(s) {}
 
 std::vector<int> Tensor::get_shape() const { return shape; }
-std::vector<int> Tensor::get_strides() const { return strides; }    
-std::vector<float> Tensor::get_data() const { return *data; } 
+
+std::vector<float> Tensor::get_data() const { return *data; }
 
 float Tensor::item(const std::vector<int>& indices) const {
     if (indices.size() != shape.size()) {
@@ -38,24 +31,22 @@ float Tensor::item(const std::vector<int>& indices) const {
     }
 
     int flat_index = 0;
-    for (size_t i = 0; i < indices.size(); ++i) {
+    int current_stride = 1;
+    for (int i = shape.size() - 1; i >= 0; --i) {
         int index = indices[i];
         if (index < 0) {
-            index += shape[i];  // assume the user wants to use negative indexing to get the last elements
+            index += shape[i];
         }
         if (index < 0 || index >= shape[i]) {
             throw std::out_of_range("Index out of bounds for dimension " + std::to_string(i));
         }
-        flat_index += index * strides[i];
+        flat_index += index * current_stride;
+        current_stride *= shape[i];
     }
     return data->at(flat_index);
 }
 
-// float Tensor::slice(int index) const {
-// }
-
-
-void format_tensor(std::stringstream& ss, const std::vector<float>& data, const std::vector<int>& shape, const std::vector<int>& strides, int dim, int offset, int indent_level, bool has_negatives) {
+void format_tensor(std::stringstream& ss, const std::vector<float>& data, const std::vector<int>& shape, const std::vector<int>& local_strides, int dim, int offset, int indent_level, bool has_negatives) {
     if (dim == shape.size()) {
         float val = data[offset];
         if (has_negatives && val >= 0) {
@@ -67,7 +58,7 @@ void format_tensor(std::stringstream& ss, const std::vector<float>& data, const 
 
     ss << "[";
     for (int i = 0; i < shape[dim]; ++i) {
-        format_tensor(ss, data, shape, strides, dim + 1, offset + i * strides[dim], indent_level + 1, has_negatives);
+        format_tensor(ss, data, shape, local_strides, dim + 1, offset + i * local_strides[dim], indent_level + 1, has_negatives);
         
         if (i < shape[dim] - 1) {
             ss << ", ";
@@ -89,11 +80,18 @@ std::string Tensor::repr() const {
         }
     }
 
+    std::vector<int> local_strides(shape.size());
+    int current_stride = 1;
+    for (int i = shape.size() - 1; i >= 0; --i) {
+        local_strides[i] = current_stride;
+        current_stride *= shape[i];
+    }
+
     std::stringstream ss;
     std::string prefix = "Tensor(";
     ss << prefix;
     
-    format_tensor(ss, *data, shape, strides, 0, 0, (int)prefix.length(), has_negatives);
+    format_tensor(ss, *data, shape, local_strides, 0, 0, (int)prefix.length(), has_negatives);
     
     ss << ", shape=[";
     for (size_t i = 0; i < shape.size(); ++i) {
@@ -138,4 +136,88 @@ void Tensor::backward() {
     for (auto it = topo.rbegin(); it != topo.rend(); ++it) {
         (*it)->_backward();
     }
+}
+
+std::shared_ptr<Tensor> Tensor::slice(py::object slices) {
+    py::tuple indices;
+    if (py::isinstance<py::tuple>(slices)) {
+        indices = slices.cast<py::tuple>();
+    } else {
+        indices = py::make_tuple(slices);
+    }
+
+    if (indices.size() > this->shape.size()) {
+        throw std::invalid_argument("Too many indices for tensor.");
+    }
+
+    std::vector<int> local_strides(this->shape.size());
+    int current_stride = 1;
+    for (int i = this->shape.size() - 1; i >= 0; --i) {
+        local_strides[i] = current_stride;
+        current_stride *= this->shape[i];
+    }
+
+    std::vector<int> new_shape;
+    std::vector<int> new_strides;
+    int new_offset = 0;
+
+    for (size_t i = 0; i < this->shape.size(); ++i) {
+        if (i >= indices.size()) {
+            new_shape.push_back(this->shape[i]);
+            new_strides.push_back(local_strides[i]);
+            continue;
+        }
+
+        py::object item = indices[i];
+
+        if (py::isinstance<py::int_>(item)) {
+            int idx = item.cast<int>();
+            if (idx < 0) idx += this->shape[i];
+            if (idx < 0 || idx >= this->shape[i]) throw std::out_of_range("Index out of bounds");
+            new_offset += idx * local_strides[i];
+        } else if (py::isinstance<py::slice>(item)) {
+            py::slice slice_obj = item.cast<py::slice>();
+            size_t start, stop, step, slicelength;
+            
+            if (!slice_obj.compute(this->shape[i], &start, &stop, &step, &slicelength)) {
+                throw py::error_already_set();
+            }
+
+            if (slicelength > 0) {
+                new_offset += start * local_strides[i];
+                new_shape.push_back(slicelength);
+                int raw_step = 1; 
+                if (!slice_obj.attr("step").is_none()) raw_step = slice_obj.attr("step").cast<int>();
+                new_strides.push_back(local_strides[i] * raw_step);
+            } else {
+                new_shape.push_back(0);
+                new_strides.push_back(local_strides[i]);
+            }
+        } else {
+            throw std::invalid_argument("Invalid index type. Expected int or slice.");
+        }
+    }
+
+    int total_elements = 1;
+    for (int dim : new_shape) {
+        total_elements *= dim;
+    }
+
+    std::vector<float> copied_data(total_elements);
+
+    if (total_elements > 0) {
+        for (int i = 0; i < total_elements; ++i) {
+            int old_flat_index = new_offset;
+            int temp = i;
+            
+            for (int j = new_shape.size() - 1; j >= 0; --j) {
+                int coord = temp % new_shape[j];
+                old_flat_index += coord * new_strides[j];
+                temp /= new_shape[j];
+            }
+            copied_data[i] = this->data->at(old_flat_index);
+        }
+    }
+
+    return std::make_shared<Tensor>(copied_data, new_shape);
 }

@@ -12,16 +12,6 @@ def sync_tensors(dll_tensor):
     t.requires_grad = True
     return t
 
-def flatten_dll(tensor):
-    def get_elements(dims, current_idx):
-        if not dims:
-            return [tensor.data[current_idx]]
-        res = []
-        for i in range(dims[0][0]):
-            res.extend(get_elements(dims[1:], current_idx + i * dims[0][1]))
-        return res
-    return get_elements(list(zip(tensor.shape, tensor.strides)), 0)
-
 @pytest.fixture(params=range(15))
 def setup_mixed_tensors():
     rank = random.randint(1, 5)
@@ -51,12 +41,12 @@ def test_mixed_unary_ops(setup_mixed_tensors, op_name):
     res_t = getattr(a_t, op_name)()
     
     assert res_dll.shape == list(res_t.shape)
-    assert flatten_dll(res_dll) == pytest.approx(res_t.flatten().tolist(), rel=rtol, abs=atol)
     
     res_dll.sum().backward()
     res_t.sum().backward()
     
-    assert a_dll.grad.data == pytest.approx(a_t.grad.flatten().tolist(), rel=rtol, abs=atol)
+    torch.testing.assert_close(torch.tensor(res_dll.data, dtype=torch.float32).reshape(res_dll.shape), res_t, rtol=rtol, atol=atol)
+    torch.testing.assert_close(torch.tensor(a_dll.grad.data, dtype=torch.float32).reshape(a_dll.shape), a_t.grad, rtol=rtol, atol=atol)
 
 @pytest.mark.parametrize("op_name", ["log", "sqrt", "cbrt"])
 def test_positive_unary_ops(setup_positive_tensors, op_name):
@@ -70,12 +60,12 @@ def test_positive_unary_ops(setup_positive_tensors, op_name):
         res_t = getattr(a_t, op_name)()
         
     assert res_dll.shape == list(res_t.shape)
-    assert flatten_dll(res_dll) == pytest.approx(res_t.flatten().tolist(), rel=rtol, abs=atol)
     
     res_dll.sum().backward()
     res_t.sum().backward()
     
-    assert a_dll.grad.data == pytest.approx(a_t.grad.flatten().tolist(), rel=rtol, abs=atol)
+    torch.testing.assert_close(torch.tensor(res_dll.data, dtype=torch.float32).reshape(res_dll.shape), res_t, rtol=rtol, atol=atol)
+    torch.testing.assert_close(torch.tensor(a_dll.grad.data, dtype=torch.float32).reshape(a_dll.shape), a_t.grad, rtol=rtol, atol=atol)
 
 def test_softmax(setup_mixed_tensors):
     a_dll, a_t = setup_mixed_tensors
@@ -85,12 +75,12 @@ def test_softmax(setup_mixed_tensors):
     res_t = a_t.softmax(dim=dim)
     
     assert res_dll.shape == list(res_t.shape)
-    assert flatten_dll(res_dll) == pytest.approx(res_t.flatten().tolist(), rel=rtol, abs=atol)
     
     res_dll.sum().backward()
     res_t.sum().backward()
     
-    assert a_dll.grad.data == pytest.approx(a_t.grad.flatten().tolist(), rel=rtol, abs=atol)
+    torch.testing.assert_close(torch.tensor(res_dll.data, dtype=torch.float32).reshape(res_dll.shape), res_t, rtol=rtol, atol=atol)
+    torch.testing.assert_close(torch.tensor(a_dll.grad.data, dtype=torch.float32).reshape(a_dll.shape), a_t.grad, rtol=rtol, atol=atol)
 
 def test_transpose(setup_ndim_tensors):
     a_dll, a_t = setup_ndim_tensors
@@ -102,7 +92,6 @@ def test_transpose(setup_ndim_tensors):
     res_t = a_t.transpose(dim0, dim1)
     
     assert res_dll.shape == list(res_t.shape)
-    assert flatten_dll(res_dll) == pytest.approx(res_t.flatten().tolist(), rel=rtol, abs=atol)
     
     loss_weights = rand(res_dll.shape)
     loss_t = sync_tensors(loss_weights)
@@ -110,7 +99,8 @@ def test_transpose(setup_ndim_tensors):
     (res_dll * loss_weights).sum().backward()
     (res_t * loss_t).sum().backward()
     
-    assert a_dll.grad.data == pytest.approx(a_t.grad.flatten().tolist(), rel=rtol, abs=atol)
+    torch.testing.assert_close(torch.tensor(res_dll.data, dtype=torch.float32).reshape(res_dll.shape), res_t, rtol=rtol, atol=atol)
+    torch.testing.assert_close(torch.tensor(a_dll.grad.data, dtype=torch.float32).reshape(a_dll.shape), a_t.grad, rtol=rtol, atol=atol)
 
 def test_chained_unary_ops(setup_positive_tensors):
     a_dll, a_t = setup_positive_tensors
@@ -120,9 +110,9 @@ def test_chained_unary_ops(setup_positive_tensors):
     res_t = a_t.exp().sqrt().log().sin().relu()
     
     assert res_dll.shape == list(res_t.shape)
-    assert flatten_dll(res_dll) == pytest.approx(res_t.flatten().tolist(), rel=rtol, abs=atol)
     
     res_dll.sum().backward()
     res_t.sum().backward()
     
-    assert a_dll.grad.data == pytest.approx(a_t.grad.flatten().tolist(), rel=rtol, abs=atol)
+    torch.testing.assert_close(torch.tensor(res_dll.data, dtype=torch.float32).reshape(res_dll.shape), res_t, rtol=rtol, atol=atol)
+    torch.testing.assert_close(torch.tensor(a_dll.grad.data, dtype=torch.float32).reshape(a_dll.shape), a_t.grad, rtol=rtol, atol=atol)

@@ -1,9 +1,10 @@
 from math import prod
 
 from ._C import Tensor, rand, randn
+from . import Random
 
 
-__all__ = ["Tensor", "zeros", "ones", "rand", "randn"]
+__all__ = ["Tensor", "zeros", "ones", "rand", "randn", "Random"]
 
 def zeros(shape):
     shape = shape if isinstance(shape, list | tuple) else [shape]

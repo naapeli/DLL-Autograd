@@ -20,11 +20,19 @@ BroadcastInfo setup_broadcast(const std::shared_ptr<Tensor>& a, const std::share
     int ndim_a = a->shape.size();
     int ndim_b = b->shape.size();
     int ndim_out = std::max(ndim_a, ndim_b);
+    
+    std::vector<int> contig_strides_a(ndim_a, 1);
+    for (int i = ndim_a - 2; i >= 0; --i) contig_strides_a[i] = contig_strides_a[i+1] * a->shape[i+1];
+
+    std::vector<int> contig_strides_b(ndim_b, 1);
+    for (int i = ndim_b - 2; i >= 0; --i) contig_strides_b[i] = contig_strides_b[i+1] * b->shape[i+1];
+
     BroadcastInfo info;
     info.out_shape.resize(ndim_out);
     info.out_strides.resize(ndim_out);
     info.strides_a.resize(ndim_out, 0);
     info.strides_b.resize(ndim_out, 0);
+    
     for (int i = 0; i < ndim_out; ++i) {
         int dim_a = (i < ndim_out - ndim_a) ? 1 : a->shape[i - (ndim_out - ndim_a)];
         int dim_b = (i < ndim_out - ndim_b) ? 1 : b->shape[i - (ndim_out - ndim_b)];
@@ -32,11 +40,12 @@ BroadcastInfo setup_broadcast(const std::shared_ptr<Tensor>& a, const std::share
             throw std::invalid_argument("Shapes are not broadcastable.");
         }
         info.out_shape[i] = std::max(dim_a, dim_b);
-        int stride_a = (i < ndim_out - ndim_a) ? 0 : a->strides[i - (ndim_out - ndim_a)];
-        int stride_b = (i < ndim_out - ndim_b) ? 0 : b->strides[i - (ndim_out - ndim_b)];
+        int stride_a = (i < ndim_out - ndim_a) ? 0 : contig_strides_a[i - (ndim_out - ndim_a)];
+        int stride_b = (i < ndim_out - ndim_b) ? 0 : contig_strides_b[i - (ndim_out - ndim_b)];
         info.strides_a[i] = (dim_a == 1) ? 0 : stride_a;
         info.strides_b[i] = (dim_b == 1) ? 0 : stride_b;
     }
+    
     int current_stride = 1;
     for (int i = ndim_out - 1; i >= 0; --i) {
         info.out_strides[i] = current_stride;
@@ -193,9 +202,11 @@ std::shared_ptr<Tensor> mul_scalar(const std::shared_ptr<Tensor>& a, float scala
 std::shared_ptr<Tensor> sub(const std::shared_ptr<Tensor>& a, const std::shared_ptr<Tensor>& b) {
     return add(a, mul_scalar(b, -1.0f));
 }
+
 std::shared_ptr<Tensor> sub_scalar(const std::shared_ptr<Tensor>& a, float scalar) {
     return add_scalar(a, -scalar);
 }
+
 std::shared_ptr<Tensor> rsub_scalar(const std::shared_ptr<Tensor>& a, float scalar) {
     return add_scalar(mul_scalar(a, -1.0f), scalar);
 }
@@ -305,9 +316,11 @@ std::shared_ptr<Tensor> rpow_scalar(const std::shared_ptr<Tensor>& a, float scal
 std::shared_ptr<Tensor> div(const std::shared_ptr<Tensor>& a, const std::shared_ptr<Tensor>& b) {
     return mul(a, pow_scalar(b, -1.0f));
 }
+
 std::shared_ptr<Tensor> div_scalar(const std::shared_ptr<Tensor>& a, float scalar) {
     return mul_scalar(a, 1.0f / scalar);
 }
+
 std::shared_ptr<Tensor> rdiv_scalar(const std::shared_ptr<Tensor>& a, float scalar) {
     return mul_scalar(pow_scalar(a, -1.0f), scalar);
 }
@@ -326,6 +339,13 @@ std::shared_ptr<Tensor> matmul(const std::shared_ptr<Tensor>& a, const std::shar
         throw std::invalid_argument("Matmul inner dimensions must match.");
     }
     int K = K_a;
+
+    std::vector<int> contig_strides_a(ndim_a, 1);
+    for (int i = ndim_a - 2; i >= 0; --i) contig_strides_a[i] = contig_strides_a[i+1] * a->shape[i+1];
+
+    std::vector<int> contig_strides_b(ndim_b, 1);
+    for (int i = ndim_b - 2; i >= 0; --i) contig_strides_b[i] = contig_strides_b[i+1] * b->shape[i+1];
+
     int batch_ndim_a = ndim_a - 2;
     int batch_ndim_b = ndim_b - 2;
     int batch_ndim = std::max(batch_ndim_a, batch_ndim_b);
@@ -333,6 +353,7 @@ std::shared_ptr<Tensor> matmul(const std::shared_ptr<Tensor>& a, const std::shar
     std::vector<int> a_batch_strides(batch_ndim, 0);
     std::vector<int> b_batch_strides(batch_ndim, 0);
     std::vector<int> out_batch_strides(batch_ndim, 0);
+    
     for (int i = 0; i < batch_ndim; ++i) {
         int dim_a = (i < batch_ndim - batch_ndim_a) ? 1 : a->shape[i - (batch_ndim - batch_ndim_a)];
         int dim_b = (i < batch_ndim - batch_ndim_b) ? 1 : b->shape[i - (batch_ndim - batch_ndim_b)];
@@ -340,28 +361,33 @@ std::shared_ptr<Tensor> matmul(const std::shared_ptr<Tensor>& a, const std::shar
             throw std::invalid_argument("Matmul batch shapes are not broadcastable.");
         }
         out_batch_shape[i] = std::max(dim_a, dim_b);
-        int stride_a = (i < batch_ndim - batch_ndim_a || dim_a == 1) ? 0 : a->strides[i - (batch_ndim - batch_ndim_a)];
-        int stride_b = (i < batch_ndim - batch_ndim_b || dim_b == 1) ? 0 : b->strides[i - (batch_ndim - batch_ndim_b)];
+        int stride_a = (i < batch_ndim - batch_ndim_a || dim_a == 1) ? 0 : contig_strides_a[i - (batch_ndim - batch_ndim_a)];
+        int stride_b = (i < batch_ndim - batch_ndim_b || dim_b == 1) ? 0 : contig_strides_b[i - (batch_ndim - batch_ndim_b)];
         a_batch_strides[i] = stride_a;
         b_batch_strides[i] = stride_b;
     }
+    
     int num_matrices = 1;
     for (int i = batch_ndim - 1; i >= 0; --i) {
         out_batch_strides[i] = num_matrices;
         num_matrices *= out_batch_shape[i];
     }
+    
     std::vector<int> out_shape = out_batch_shape;
     out_shape.push_back(M);
     out_shape.push_back(N);
     int out_size = num_matrices * M * N;
     std::vector<float> out_data(out_size, 0.0f);
-    int stride_a_M = a->strides[ndim_a - 2];
-    int stride_a_K = a->strides[ndim_a - 1];
-    int stride_b_K = b->strides[ndim_b - 2];
-    int stride_b_N = b->strides[ndim_b - 1];
+    
+    int stride_a_M = contig_strides_a[ndim_a - 2];
+    int stride_a_K = contig_strides_a[ndim_a - 1];
+    int stride_b_K = contig_strides_b[ndim_b - 2];
+    int stride_b_N = contig_strides_b[ndim_b - 1];
+    
     float* a_ptr = a->data->data();
     float* b_ptr = b->data->data();
     float* out_ptr = out_data.data();
+    
     for (int b_idx = 0; b_idx < num_matrices; ++b_idx) {
         int temp = b_idx;
         int offset_a = 0;
@@ -396,6 +422,7 @@ std::shared_ptr<Tensor> matmul(const std::shared_ptr<Tensor>& a, const std::shar
             }
         }
     }
+    
     auto out = std::make_shared<Tensor>(out_data, out_shape);
     if (a->requires_grad || b->requires_grad) {
         out->requires_grad = true;
