@@ -2,8 +2,12 @@ import pytest
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import shapiro, normaltest, kstest, uniform, norm
-from DLL import rand, randn
 
+from DLL import rand, randn
+from DLL.Random import seed
+
+
+seed(0)
 
 @pytest.mark.parametrize("n", [10, 100, 1000, 10000])
 def test_normality(n):

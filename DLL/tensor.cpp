@@ -172,7 +172,7 @@ std::shared_ptr<Tensor> Tensor::slice(py::object slices) {
 
         if (py::isinstance<py::int_>(item)) {
             int idx = item.cast<int>();
-            if (idx < 0) idx += this->shape[i];
+            if (idx < 0) idx += this->shape[i]; 
             if (idx < 0 || idx >= this->shape[i]) throw std::out_of_range("Index out of bounds");
             new_offset += idx * local_strides[i];
         } else if (py::isinstance<py::slice>(item)) {
@@ -186,8 +186,11 @@ std::shared_ptr<Tensor> Tensor::slice(py::object slices) {
             if (slicelength > 0) {
                 new_offset += start * local_strides[i];
                 new_shape.push_back(slicelength);
+                
                 int raw_step = 1; 
-                if (!slice_obj.attr("step").is_none()) raw_step = slice_obj.attr("step").cast<int>();
+                if (!slice_obj.attr("step").is_none()) {
+                    raw_step = slice_obj.attr("step").cast<int>();
+                }
                 new_strides.push_back(local_strides[i] * raw_step);
             } else {
                 new_shape.push_back(0);
@@ -219,5 +222,32 @@ std::shared_ptr<Tensor> Tensor::slice(py::object slices) {
         }
     }
 
-    return std::make_shared<Tensor>(copied_data, new_shape);
+    auto out = std::make_shared<Tensor>(copied_data, new_shape);
+    out->requires_grad = this->requires_grad;
+
+    if (this->requires_grad) {
+        out->_prev.push_back(shared_from_this());
+        
+        auto self = shared_from_this();
+        out->_backward = [self, out, new_offset, new_shape, new_strides, total_elements]() {
+            if (!self->grad) { self->zero_grad(); }
+
+            if (total_elements > 0 && out->grad) {
+                for (int i = 0; i < total_elements; ++i) {
+                    int old_flat_index = new_offset;
+                    int temp = i;
+                    
+                    for (int j = new_shape.size() - 1; j >= 0; --j) {
+                        int coord = temp % new_shape[j];
+                        old_flat_index += coord * new_strides[j];
+                        temp /= new_shape[j];
+                    }
+                    
+                    self->grad->data->at(old_flat_index) += out->grad->data->at(i);
+                }
+            }
+        };
+    }
+
+    return out;
 }
