@@ -31,12 +31,29 @@ std::vector<int> Tensor::get_strides() const { return strides; }
 std::vector<float> Tensor::get_data() const { return *data; } 
 
 float Tensor::item(const std::vector<int>& indices) const {
+    if (indices.size() != shape.size()) {
+        throw std::invalid_argument(
+            "IndexError: Expected " + std::to_string(shape.size()) + " indices, but got " + std::to_string(indices.size())
+        );
+    }
+
     int flat_index = 0;
     for (size_t i = 0; i < indices.size(); ++i) {
-        flat_index += indices[i] * strides[i];
+        int index = indices[i];
+        if (index < 0) {
+            index += shape[i];  // assume the user wants to use negative indexing to get the last elements
+        }
+        if (index < 0 || index >= shape[i]) {
+            throw std::out_of_range("Index out of bounds for dimension " + std::to_string(i));
+        }
+        flat_index += index * strides[i];
     }
-    return (*data)[flat_index];
+    return data->at(flat_index);
 }
+
+// float Tensor::slice(int index) const {
+// }
+
 
 void format_tensor(std::stringstream& ss, const std::vector<float>& data, const std::vector<int>& shape, const std::vector<int>& strides, int dim, int offset, int indent_level, bool has_negatives) {
     if (dim == shape.size()) {

@@ -8,6 +8,10 @@ execute_process(
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
+endif()
+
 find_package(pybind11 CONFIG REQUIRED)
 find_package(OpenMP REQUIRED)
 

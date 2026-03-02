@@ -1,22 +1,5 @@
 from math import prod
 
-import os
-import sys
-from pathlib import Path
-
-def _setup_dll_env():
-    if sys.platform != "win32":
-        return
-
-    pkg_root = Path(__file__).parent
-    lib_dir = pkg_root / "lib"
-
-    if lib_dir.exists():
-        os.add_dll_directory(str(lib_dir))
-
-_setup_dll_env()
-
-
 from ._C import Tensor, rand, randn
 
 

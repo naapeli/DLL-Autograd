@@ -4,7 +4,6 @@ pybind11_add_module(_C
     ops/binary.cpp 
     ops/unary.cpp
     ops/reduce.cpp
-    Random/mersenneTwister.cpp
     Random/random.cpp
     Random/randomTensor.cpp
 )

@@ -9,6 +9,7 @@ public:
     std::shared_ptr<std::vector<float>> data;
     std::vector<int> shape;
     std::vector<int> strides;
+    int offset = 0;
 
     bool requires_grad = false;
     std::shared_ptr<Tensor> grad = nullptr;

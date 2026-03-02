@@ -1,9 +1,14 @@
 #pragma once
-#include "mersenneTwister.h"
+#include "Xoshiro256.h"
+#include <stdint.h>
+#include <cstddef>
 
 
 namespace randomGen {
-    float rand(float min = 0.0, float max = 1.0);
-    float randn(float mean = 0.0, float stddev = 1.0);
+    extern Xoshiro256 engine;
+
     void set_seed(uint32_t seed);
+    
+    void fill_uniform(float* data, size_t n, float min, float max);
+    void fill_normal(float* data, size_t n, float mean, float stddev);
 }
