@@ -57,7 +57,12 @@ std::shared_ptr<Tensor> transpose(const std::shared_ptr<Tensor>& a, int dim0, in
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a, dim0, dim1, a_strides, out_strides, num_elements, ndim]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a, dim0, dim1, a_strides, out_strides, num_elements, ndim]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (!a->grad) a->zero_grad();
             float* a_grad_ptr = a->grad->data->data();
             float* out_grad_ptr = out->grad->data->data();
@@ -95,7 +100,12 @@ std::shared_ptr<Tensor> exp(const std::shared_ptr<Tensor>& a) {
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (!a->grad) a->zero_grad();
             float* a_grad_ptr = a->grad->data->data();
             float* out_grad_ptr = out->grad->data->data();
@@ -123,7 +133,12 @@ std::shared_ptr<Tensor> log(const std::shared_ptr<Tensor>& a) {
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (!a->grad) a->zero_grad();
             float* a_grad_ptr = a->grad->data->data();
             float* out_grad_ptr = out->grad->data->data();
@@ -151,7 +166,12 @@ std::shared_ptr<Tensor> sqrt(const std::shared_ptr<Tensor>& a) {
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (!a->grad) a->zero_grad();
             float* a_grad_ptr = a->grad->data->data();
             float* out_grad_ptr = out->grad->data->data();
@@ -179,7 +199,12 @@ std::shared_ptr<Tensor> cbrt(const std::shared_ptr<Tensor>& a) {
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (!a->grad) a->zero_grad();
             float* a_grad_ptr = a->grad->data->data();
             float* out_grad_ptr = out->grad->data->data();
@@ -208,7 +233,12 @@ std::shared_ptr<Tensor> abs(const std::shared_ptr<Tensor>& a) {
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (!a->grad) a->zero_grad();
             float* a_grad_ptr = a->grad->data->data();
             float* out_grad_ptr = out->grad->data->data();
@@ -238,7 +268,12 @@ std::shared_ptr<Tensor> sin(const std::shared_ptr<Tensor>& a) {
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (!a->grad) a->zero_grad();
             float* a_grad_ptr = a->grad->data->data();
             float* out_grad_ptr = out->grad->data->data();
@@ -266,7 +301,12 @@ std::shared_ptr<Tensor> cos(const std::shared_ptr<Tensor>& a) {
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (!a->grad) a->zero_grad();
             float* a_grad_ptr = a->grad->data->data();
             float* out_grad_ptr = out->grad->data->data();
@@ -294,7 +334,12 @@ std::shared_ptr<Tensor> relu(const std::shared_ptr<Tensor>& a) {
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (!a->grad) a->zero_grad();
             float* a_grad_ptr = a->grad->data->data();
             float* out_grad_ptr = out->grad->data->data();
@@ -324,7 +369,12 @@ std::shared_ptr<Tensor> tanh(const std::shared_ptr<Tensor>& a) {
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (!a->grad) a->zero_grad();
             float* a_grad_ptr = a->grad->data->data();
             float* out_grad_ptr = out->grad->data->data();
@@ -360,7 +410,12 @@ std::shared_ptr<Tensor> sigmoid(const std::shared_ptr<Tensor>& a) {
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (!a->grad) a->zero_grad();
             float* a_grad_ptr = a->grad->data->data();
             float* out_grad_ptr = out->grad->data->data();

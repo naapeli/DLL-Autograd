@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <limits>
 #include <omp.h>
+#include <memory>
 
 std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, bool keepdim) {
     float total = 0;
@@ -21,7 +22,12 @@ std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, bool keepdim) {
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (!a->grad) a->zero_grad();
             float upstream_grad = (*out->grad->data)[0];
             
@@ -85,7 +91,12 @@ std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, int dim, bool keep
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a, dim, out_strides, a_strides, keepdim]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a, dim, out_strides, a_strides, keepdim]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (!a->grad) a->zero_grad();            
             
             #pragma omp parallel for if(a->data->size() > 16384)
@@ -120,7 +131,12 @@ std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, bool keepdim) {
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (!a->grad) a->zero_grad();
             int zero_count = 0;
             float non_zero_prod = 1.0f;
@@ -201,7 +217,12 @@ std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, int dim, bool kee
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a, dim, out_strides, a_strides, keepdim]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a, dim, out_strides, a_strides, keepdim]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (!a->grad) a->zero_grad();
             int out_size = out->data->size();
             std::vector<int> zero_counts(out_size, 0);
@@ -307,7 +328,12 @@ std::shared_ptr<Tensor> max(const std::shared_ptr<Tensor>& a, bool keepdim) {
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a, argmax]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a, argmax]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (!a->grad) a->zero_grad();
             if (argmax != -1) {
                 (*a->grad->data)[argmax] += (*out->grad->data)[0];
@@ -379,7 +405,12 @@ std::shared_ptr<Tensor> max(const std::shared_ptr<Tensor>& a, int dim, bool keep
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a, argmax]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a, argmax]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (!a->grad) a->zero_grad();
             #pragma omp parallel for if(out->data->size() > 16384)
             for (int out_idx = 0; out_idx < (int)out->data->size(); ++out_idx) {
@@ -428,7 +459,12 @@ std::shared_ptr<Tensor> min(const std::shared_ptr<Tensor>& a, bool keepdim) {
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a, argmin]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a, argmin]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (!a->grad) a->zero_grad();
             if (argmin != -1) {
                 (*a->grad->data)[argmin] += (*out->grad->data)[0];
@@ -500,7 +536,12 @@ std::shared_ptr<Tensor> min(const std::shared_ptr<Tensor>& a, int dim, bool keep
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a, argmin]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a, argmin]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (!a->grad) a->zero_grad();
             #pragma omp parallel for if(out->data->size() > 16384)
             for (int out_idx = 0; out_idx < (int)out->data->size(); ++out_idx) {

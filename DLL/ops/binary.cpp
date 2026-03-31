@@ -3,6 +3,7 @@
 #include <cmath>
 #include <omp.h>
 #include <algorithm>
+#include <memory>
 
 constexpr int BLOCK_M = 64;
 constexpr int BLOCK_K = 64;
@@ -84,7 +85,12 @@ std::shared_ptr<Tensor> add(const std::shared_ptr<Tensor>& a, const std::shared_
     if (a->requires_grad || b->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a, b};
-        out->_backward = [out, a, b, info, a_contig, b_contig]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a, b, info, a_contig, b_contig]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (a->requires_grad && !a->grad) a->zero_grad();
             if (b->requires_grad && !b->grad) b->zero_grad();
             
@@ -138,7 +144,12 @@ std::shared_ptr<Tensor> add_scalar(const std::shared_ptr<Tensor>& a, float scala
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (!a->grad) a->zero_grad();
             
             #pragma omp parallel for simd if(out->grad->data->size() > 16384)
@@ -179,7 +190,12 @@ std::shared_ptr<Tensor> mul(const std::shared_ptr<Tensor>& a, const std::shared_
     if (a->requires_grad || b->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a, b};
-        out->_backward = [out, a, b, info, a_contig, b_contig]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a, b, info, a_contig, b_contig]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (a->requires_grad && !a->grad) a->zero_grad();
             if (b->requires_grad && !b->grad) b->zero_grad();
             
@@ -235,7 +251,12 @@ std::shared_ptr<Tensor> mul_scalar(const std::shared_ptr<Tensor>& a, float scala
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a, scalar]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a, scalar]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (a->requires_grad) {
                 if (!a->grad) a->zero_grad();
                 
@@ -290,7 +311,12 @@ std::shared_ptr<Tensor> pow(const std::shared_ptr<Tensor>& a, const std::shared_
     if (a->requires_grad || b->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a, b};
-        out->_backward = [out, a, b, info, a_contig, b_contig]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a, b, info, a_contig, b_contig]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (a->requires_grad && !a->grad) a->zero_grad();
             if (b->requires_grad && !b->grad) b->zero_grad();
             
@@ -355,7 +381,12 @@ std::shared_ptr<Tensor> pow_scalar(const std::shared_ptr<Tensor>& a, float scala
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a, scalar]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a, scalar]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (a->requires_grad) {
                 if (!a->grad) a->zero_grad();
                 
@@ -380,7 +411,12 @@ std::shared_ptr<Tensor> rpow_scalar(const std::shared_ptr<Tensor>& a, float scal
     if (a->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a};
-        out->_backward = [out, a, scalar]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a, scalar]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (a->requires_grad) {
                 if (!a->grad) a->zero_grad();
                 
@@ -508,7 +544,12 @@ std::shared_ptr<Tensor> matmul(const std::shared_ptr<Tensor>& a, const std::shar
     if (a->requires_grad || b->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a, b};
-        out->_backward = [out, a, b, num_matrices, M, K, N, batch_ndim, out_batch_strides, a_batch_strides, b_batch_strides, stride_a_M, stride_a_K, stride_b_K, stride_b_N]() {
+        
+        std::weak_ptr<Tensor> weak_out = out;
+        out->_backward = [weak_out, a, b, num_matrices, M, K, N, batch_ndim, out_batch_strides, a_batch_strides, b_batch_strides, stride_a_M, stride_a_K, stride_b_K, stride_b_N]() {
+            auto out = weak_out.lock();
+            if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
+            
             if (a->requires_grad && !a->grad) a->zero_grad();
             if (b->requires_grad && !b->grad) b->zero_grad();
             float* a_ptr = a->data->data();
