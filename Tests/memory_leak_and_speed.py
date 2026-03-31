@@ -7,8 +7,8 @@ import torch
 from tqdm import tqdm
 
 
-n = 1000
-k = 100000
+n = 10000  # 1000
+k = 10  # 1000
 backprop = False
 x = randn((n, n))
 y = randn((n, n))

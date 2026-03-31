@@ -9,8 +9,8 @@ pybind11_add_module(_C
 )
 
 target_compile_features(_C PRIVATE cxx_std_17)
-target_include_directories(_C PRIVATE ${CMAKE_SOURCE_DIR}/include)
-target_link_libraries(_C PRIVATE OpenMP::OpenMP_CXX)
+target_include_directories(_C PRIVATE ${CMAKE_SOURCE_DIR}/include /usr/include/x86_64-linux-gnu)
+target_link_libraries(_C PRIVATE OpenMP::OpenMP_CXX ${BLAS_LIBRARIES})
 
 target_compile_options(_C PRIVATE -O3 -march=native -ffast-math)
 

@@ -4,10 +4,7 @@
 #include <omp.h>
 #include <algorithm>
 #include <memory>
-
-constexpr int BLOCK_M = 64;
-constexpr int BLOCK_K = 64;
-constexpr int BLOCK_N = 256;
+#include <cblas.h>
 
 struct BroadcastInfo {
     std::vector<int> out_shape;
@@ -496,11 +493,6 @@ std::shared_ptr<Tensor> matmul(const std::shared_ptr<Tensor>& a, const std::shar
     int out_size = num_matrices * M * N;
     std::vector<float> out_data(out_size, 0.0f);
     
-    int stride_a_M = contig_strides_a[ndim_a - 2];
-    int stride_a_K = contig_strides_a[ndim_a - 1];
-    int stride_b_K = contig_strides_b[ndim_b - 2];
-    int stride_b_N = contig_strides_b[ndim_b - 1];
-    
     float* a_ptr = a->data->data();
     float* b_ptr = b->data->data();
     float* out_ptr = out_data.data();
@@ -516,28 +508,13 @@ std::shared_ptr<Tensor> matmul(const std::shared_ptr<Tensor>& a, const std::shar
             offset_b += coord * b_batch_strides[d];
         }
         int offset_out = b_idx * M * N;
-        #pragma omp parallel for schedule(dynamic) if(M * N * K > 16384)
-        for (int m_b = 0; m_b < M; m_b += BLOCK_M) {
-            for (int k_b = 0; k_b < K; k_b += BLOCK_K) {
-                for (int n_b = 0; n_b < N; n_b += BLOCK_N) {
-                    int m_end = std::min(m_b + BLOCK_M, M);
-                    int k_end = std::min(k_b + BLOCK_K, K);
-                    int n_end = std::min(n_b + BLOCK_N, N);
-                    for (int m = m_b; m < m_end; ++m) {
-                        int a_m_offset = offset_a + m * stride_a_M;
-                        int out_m_offset = offset_out + m * N;
-                        for (int k = k_b; k < k_end; ++k) {
-                            float a_val = a_ptr[a_m_offset + k * stride_a_K];
-                            int b_k_offset = offset_b + k * stride_b_K;
-                            #pragma omp simd
-                            for (int n = n_b; n < n_end; ++n) {
-                                out_ptr[out_m_offset + n] += a_val * b_ptr[b_k_offset + n * stride_b_N];
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                    M, N, K,
+                    1.0f,
+                    a_ptr + offset_a, K,
+                    b_ptr + offset_b, N,
+                    0.0f,
+                    out_ptr + offset_out, N);
     }
     
     auto out = std::make_shared<Tensor>(out_data, out_shape);
@@ -546,7 +523,7 @@ std::shared_ptr<Tensor> matmul(const std::shared_ptr<Tensor>& a, const std::shar
         out->_prev = {a, b};
         
         std::weak_ptr<Tensor> weak_out = out;
-        out->_backward = [weak_out, a, b, num_matrices, M, K, N, batch_ndim, out_batch_strides, a_batch_strides, b_batch_strides, stride_a_M, stride_a_K, stride_b_K, stride_b_N]() {
+        out->_backward = [weak_out, a, b, num_matrices, M, K, N, batch_ndim, out_batch_strides, a_batch_strides, b_batch_strides]() {
             auto out = weak_out.lock();
             if (!out) throw std::runtime_error("Autograd engine error: Node destroyed prematurely.");
             
@@ -568,53 +545,24 @@ std::shared_ptr<Tensor> matmul(const std::shared_ptr<Tensor>& a, const std::shar
                 }
                 int offset_out = b_idx * M * N;
                 if (a->requires_grad) {
-                    #pragma omp parallel for schedule(dynamic) if(M * N * K > 16384)
-                    for (int m_b = 0; m_b < M; m_b += BLOCK_M) {
-                        for (int k_b = 0; k_b < K; k_b += BLOCK_K) {
-                            for (int n_b = 0; n_b < N; n_b += BLOCK_N) {
-                                int m_end = std::min(m_b + BLOCK_M, M);
-                                int k_end = std::min(k_b + BLOCK_K, K);
-                                int n_end = std::min(n_b + BLOCK_N, N);
-                                for (int m = m_b; m < m_end; ++m) {
-                                    int grad_m_offset = offset_out + m * N;
-                                    int a_grad_m_offset = offset_a + m * stride_a_M;
-                                    for (int k = k_b; k < k_end; ++k) {
-                                        float sum = 0.0f;
-                                        int b_k_offset = offset_b + k * stride_b_K;
-                                        #pragma omp simd reduction(+:sum)
-                                        for (int n = n_b; n < n_end; ++n) {
-                                            sum += out_grad_ptr[grad_m_offset + n] * b_ptr[b_k_offset + n * stride_b_N];
-                                        }
-                                        a_grad_ptr[a_grad_m_offset + k * stride_a_K] += sum;
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    // grad_a += grad_out @ b^T
+                    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+                                M, K, N,
+                                1.0f,
+                                out_grad_ptr + offset_out, N,
+                                b_ptr + offset_b, N,
+                                1.0f,
+                                a_grad_ptr + offset_a, K);
                 }
                 if (b->requires_grad) {
-                    #pragma omp parallel for schedule(dynamic) if(M * N * K > 16384)
-                    for (int k_b = 0; k_b < K; k_b += BLOCK_K) {
-                        for (int m_b = 0; m_b < M; m_b += BLOCK_M) {
-                            for (int n_b = 0; n_b < N; n_b += BLOCK_N) {
-                                int m_end = std::min(m_b + BLOCK_M, M);
-                                int k_end = std::min(k_b + BLOCK_K, K);
-                                int n_end = std::min(n_b + BLOCK_N, N);
-                                for (int m = m_b; m < m_end; ++m) {
-                                    int a_m_offset = offset_a + m * stride_a_M;
-                                    int grad_m_offset = offset_out + m * N;
-                                    for (int k = k_b; k < k_end; ++k) {
-                                        float a_val = a_ptr[a_m_offset + k * stride_a_K];
-                                        int b_grad_k_offset = offset_b + k * stride_b_K;
-                                        #pragma omp simd
-                                        for (int n = n_b; n < n_end; ++n) {
-                                            b_grad_ptr[b_grad_k_offset + n * stride_b_N] += a_val * out_grad_ptr[grad_m_offset + n];
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    // grad_b += a^T @ grad_out
+                    cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+                                K, N, M,
+                                1.0f,
+                                a_ptr + offset_a, K,
+                                out_grad_ptr + offset_out, N,
+                                1.0f,
+                                b_grad_ptr + offset_b, N);
                 }
             }
         };
