@@ -23,27 +23,49 @@ std::vector<int> Tensor::get_shape() const { return shape; }
 
 std::vector<float> Tensor::get_data() const { return *data; }
 
-float Tensor::item(const std::vector<int>& indices) const {
-    if (indices.size() != shape.size()) {
-        throw std::invalid_argument(
-            "IndexError: Expected " + std::to_string(shape.size()) + " indices, but got " + std::to_string(indices.size())
+float Tensor::item() const {
+    size_t numel = 1;
+    for (int dim : shape) {
+        numel *= dim;
+    }
+
+    if (numel != 1) {
+        throw std::runtime_error(
+            "ValueError: item() can only be called on tensors with 1 element, but this tensor has " + std::to_string(numel) + " elements."
         );
     }
 
-    int flat_index = 0;
-    int current_stride = 1;
-    for (int i = shape.size() - 1; i >= 0; --i) {
-        int index = indices[i];
-        if (index < 0) {
-            index += shape[i];
+    return data->at(0);
+}
+
+namespace {
+    void parse_nested_list(const py::handle& obj, std::vector<float>& flat_data, std::vector<int>& shape, int depth) {
+        if (py::isinstance<py::list>(obj)) {
+            py::list lst = py::cast<py::list>(obj);
+            
+            if (depth >= shape.size()) {
+                shape.push_back(lst.size());
+            } else if (shape[depth] != lst.size()) {
+                throw std::invalid_argument("Ragged sequences (lists of varying lengths) are not allowed.");
+            }
+            
+            for (auto item : lst) {
+                parse_nested_list(item, flat_data, shape, depth + 1);
+            }
+        } else {
+            flat_data.push_back(py::cast<float>(obj));
         }
-        if (index < 0 || index >= shape[i]) {
-            throw std::out_of_range("Index out of bounds for dimension " + std::to_string(i));
-        }
-        flat_index += index * current_stride;
-        current_stride *= shape[i];
     }
-    return data->at(flat_index);
+}
+
+Tensor::Tensor(py::list python_list) {
+    std::vector<float> parsed_data;
+    std::vector<int> parsed_shape;
+    
+    parse_nested_list(python_list, parsed_data, parsed_shape, 0);
+    
+    this->data = std::make_shared<std::vector<float>>(std::move(parsed_data));
+    this->shape = std::move(parsed_shape);
 }
 
 void format_tensor(std::stringstream& ss, const std::vector<float>& data, const std::vector<int>& shape, const std::vector<int>& local_strides, int dim, int offset, int indent_level, bool has_negatives) {

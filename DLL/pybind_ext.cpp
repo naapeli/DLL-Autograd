@@ -12,6 +12,7 @@ namespace py = pybind11;
 PYBIND11_MODULE(_C, m) {
     py::class_<Tensor, std::shared_ptr<Tensor>>(m, "Tensor")
         .def(py::init<std::vector<float>, std::vector<int>>(), py::arg("data"), py::arg("shape"))
+        .def(py::init<py::list>(), py::arg("data"))
 
         .def_property_readonly("shape", &Tensor::get_shape)
         .def_property_readonly("data", &Tensor::get_data)

@@ -347,7 +347,14 @@ std::shared_ptr<Tensor> sigmoid(const std::shared_ptr<Tensor>& a) {
     
     #pragma omp parallel for simd
     for (size_t i = 0; i < a->data->size(); ++i) {
-        out_ptr[i] = 1.0f / (1.0f + std::exp(-a_ptr[i]));
+        float x = a_ptr[i];
+        if (x >= 0.0f) {
+            float z = std::exp(-x);
+            out_ptr[i] = 1.0f / (1.0f + z);
+        } else {
+            float z = std::exp(x);
+            out_ptr[i] = z / (1.0f + z);
+        }
     }
     auto out = std::make_shared<Tensor>(out_data, a->shape);
     if (a->requires_grad) {
