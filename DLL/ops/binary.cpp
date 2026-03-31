@@ -59,42 +59,67 @@ std::shared_ptr<Tensor> add(const std::shared_ptr<Tensor>& a, const std::shared_
     BroadcastInfo info = setup_broadcast(a, b);
     std::vector<float> result_data(info.out_size);
     
-    #pragma omp parallel for
-    for (int i = 0; i < info.out_size; ++i) {
-        int temp = i, idx_a = 0, idx_b = 0;
-        for (int d = 0; d < (int)info.out_shape.size(); ++d) {
-            int coord = temp / info.out_strides[d];
-            temp %= info.out_strides[d];
-            idx_a += coord * info.strides_a[d];
-            idx_b += coord * info.strides_b[d];
+    bool a_contig = (info.strides_a == info.out_strides);
+    bool b_contig = (info.strides_b == info.out_strides);
+    
+    if (a_contig && b_contig) {
+        #pragma omp parallel for simd if(info.out_size > 16384)
+        for (int i = 0; i < info.out_size; ++i) {
+            result_data[i] = (*a->data)[i] + (*b->data)[i];
         }
-        result_data[i] = (*a->data)[idx_a] + (*b->data)[idx_b];
+    } else {
+        #pragma omp parallel for if(info.out_size > 16384)
+        for (int i = 0; i < info.out_size; ++i) {
+            int temp = i, idx_a = 0, idx_b = 0;
+            for (int d = 0; d < (int)info.out_shape.size(); ++d) {
+                int coord = temp / info.out_strides[d];
+                temp %= info.out_strides[d];
+                idx_a += coord * info.strides_a[d];
+                idx_b += coord * info.strides_b[d];
+            }
+            result_data[i] = (*a->data)[idx_a] + (*b->data)[idx_b];
+        }
     }
     auto out = std::make_shared<Tensor>(result_data, info.out_shape);
     if (a->requires_grad || b->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a, b};
-        out->_backward = [out, a, b, info]() {
+        out->_backward = [out, a, b, info, a_contig, b_contig]() {
             if (a->requires_grad && !a->grad) a->zero_grad();
             if (b->requires_grad && !b->grad) b->zero_grad();
             
-            #pragma omp parallel for
-            for (int i = 0; i < info.out_size; ++i) {
-                int temp = i, idx_a = 0, idx_b = 0;
-                for (int d = 0; d < (int)info.out_shape.size(); ++d) {
-                    int coord = temp / info.out_strides[d];
-                    temp %= info.out_strides[d];
-                    idx_a += coord * info.strides_a[d];
-                    idx_b += coord * info.strides_b[d];
+            if (a_contig && b_contig) {
+                #pragma omp parallel for simd if(info.out_size > 16384)
+                for (int i = 0; i < info.out_size; ++i) {
+                    float grad_out = (*out->grad->data)[i];
+                    if (a->requires_grad) (*a->grad->data)[i] += grad_out;
+                    if (b->requires_grad) (*b->grad->data)[i] += grad_out;
                 }
-                float grad_out = (*out->grad->data)[i];
-                if (a->requires_grad) {
-                    #pragma omp atomic
-                    (*a->grad->data)[idx_a] += grad_out;
-                }
-                if (b->requires_grad) {
-                    #pragma omp atomic
-                    (*b->grad->data)[idx_b] += grad_out;
+            } else {
+                #pragma omp parallel for if(info.out_size > 16384)
+                for (int i = 0; i < info.out_size; ++i) {
+                    int temp = i, idx_a = 0, idx_b = 0;
+                    for (int d = 0; d < (int)info.out_shape.size(); ++d) {
+                        int coord = temp / info.out_strides[d];
+                        temp %= info.out_strides[d];
+                        idx_a += coord * info.strides_a[d];
+                        idx_b += coord * info.strides_b[d];
+                    }
+                    float grad_out = (*out->grad->data)[i];
+                    if (a->requires_grad) {
+                        if (a_contig) { (*a->grad->data)[idx_a] += grad_out; }
+                        else { 
+                            #pragma omp atomic
+                            (*a->grad->data)[idx_a] += grad_out; 
+                        }
+                    }
+                    if (b->requires_grad) {
+                        if (b_contig) { (*b->grad->data)[idx_b] += grad_out; }
+                        else { 
+                            #pragma omp atomic
+                            (*b->grad->data)[idx_b] += grad_out; 
+                        }
+                    }
                 }
             }
         };
@@ -105,7 +130,7 @@ std::shared_ptr<Tensor> add(const std::shared_ptr<Tensor>& a, const std::shared_
 std::shared_ptr<Tensor> add_scalar(const std::shared_ptr<Tensor>& a, float scalar) {
     std::vector<float> result_data(a->data->size());
     
-    #pragma omp parallel for simd
+    #pragma omp parallel for simd if(a->data->size() > 16384)
     for (size_t i = 0; i < a->data->size(); ++i) {
         result_data[i] = (*a->data)[i] + scalar;
     }
@@ -116,7 +141,7 @@ std::shared_ptr<Tensor> add_scalar(const std::shared_ptr<Tensor>& a, float scala
         out->_backward = [out, a]() {
             if (!a->grad) a->zero_grad();
             
-            #pragma omp parallel for simd
+            #pragma omp parallel for simd if(out->grad->data->size() > 16384)
             for (size_t i = 0; i < out->grad->data->size(); ++i) {
                 (*a->grad->data)[i] += (*out->grad->data)[i];
             }
@@ -129,44 +154,69 @@ std::shared_ptr<Tensor> mul(const std::shared_ptr<Tensor>& a, const std::shared_
     BroadcastInfo info = setup_broadcast(a, b);
     std::vector<float> result_data(info.out_size);
     
-    #pragma omp parallel for
-    for (int i = 0; i < info.out_size; ++i) {
-        int temp = i, idx_a = 0, idx_b = 0;
-        for (int d = 0; d < (int)info.out_shape.size(); ++d) {
-            int coord = temp / info.out_strides[d];
-            temp %= info.out_strides[d];
-            idx_a += coord * info.strides_a[d];
-            idx_b += coord * info.strides_b[d];
+    bool a_contig = (info.strides_a == info.out_strides);
+    bool b_contig = (info.strides_b == info.out_strides);
+    
+    if (a_contig && b_contig) {
+        #pragma omp parallel for simd if(info.out_size > 16384)
+        for (int i = 0; i < info.out_size; ++i) {
+            result_data[i] = (*a->data)[i] * (*b->data)[i];
         }
-        result_data[i] = (*a->data)[idx_a] * (*b->data)[idx_b];
+    } else {
+        #pragma omp parallel for if(info.out_size > 16384)
+        for (int i = 0; i < info.out_size; ++i) {
+            int temp = i, idx_a = 0, idx_b = 0;
+            for (int d = 0; d < (int)info.out_shape.size(); ++d) {
+                int coord = temp / info.out_strides[d];
+                temp %= info.out_strides[d];
+                idx_a += coord * info.strides_a[d];
+                idx_b += coord * info.strides_b[d];
+            }
+            result_data[i] = (*a->data)[idx_a] * (*b->data)[idx_b];
+        }
     }
     auto out = std::make_shared<Tensor>(result_data, info.out_shape);
     if (a->requires_grad || b->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a, b};
-        out->_backward = [out, a, b, info]() {
+        out->_backward = [out, a, b, info, a_contig, b_contig]() {
             if (a->requires_grad && !a->grad) a->zero_grad();
             if (b->requires_grad && !b->grad) b->zero_grad();
             
-            #pragma omp parallel for
-            for (int i = 0; i < info.out_size; ++i) {
-                int temp = i, idx_a = 0, idx_b = 0;
-                for (int d = 0; d < (int)info.out_shape.size(); ++d) {
-                    int coord = temp / info.out_strides[d];
-                    temp %= info.out_strides[d];
-                    idx_a += coord * info.strides_a[d];
-                    idx_b += coord * info.strides_b[d];
+            if (a_contig && b_contig) {
+                #pragma omp parallel for simd if(info.out_size > 16384)
+                for (int i = 0; i < info.out_size; ++i) {
+                    float grad_out = (*out->grad->data)[i];
+                    if (a->requires_grad) (*a->grad->data)[i] += (*b->data)[i] * grad_out;
+                    if (b->requires_grad) (*b->grad->data)[i] += (*a->data)[i] * grad_out;
                 }
-                float grad_out = (*out->grad->data)[i];
-                if (a->requires_grad) {
-                    float val = (*b->data)[idx_b] * grad_out;
-                    #pragma omp atomic
-                    (*a->grad->data)[idx_a] += val;
-                }
-                if (b->requires_grad) {
-                    float val = (*a->data)[idx_a] * grad_out;
-                    #pragma omp atomic
-                    (*b->grad->data)[idx_b] += val;
+            } else {
+                #pragma omp parallel for if(info.out_size > 16384)
+                for (int i = 0; i < info.out_size; ++i) {
+                    int temp = i, idx_a = 0, idx_b = 0;
+                    for (int d = 0; d < (int)info.out_shape.size(); ++d) {
+                        int coord = temp / info.out_strides[d];
+                        temp %= info.out_strides[d];
+                        idx_a += coord * info.strides_a[d];
+                        idx_b += coord * info.strides_b[d];
+                    }
+                    float grad_out = (*out->grad->data)[i];
+                    if (a->requires_grad) {
+                        float val = (*b->data)[idx_b] * grad_out;
+                        if (a_contig) { (*a->grad->data)[idx_a] += val; }
+                        else { 
+                            #pragma omp atomic
+                            (*a->grad->data)[idx_a] += val; 
+                        }
+                    }
+                    if (b->requires_grad) {
+                        float val = (*a->data)[idx_a] * grad_out;
+                        if (b_contig) { (*b->grad->data)[idx_b] += val; }
+                        else { 
+                            #pragma omp atomic
+                            (*b->grad->data)[idx_b] += val; 
+                        }
+                    }
                 }
             }
         };
@@ -177,7 +227,7 @@ std::shared_ptr<Tensor> mul(const std::shared_ptr<Tensor>& a, const std::shared_
 std::shared_ptr<Tensor> mul_scalar(const std::shared_ptr<Tensor>& a, float scalar) {
     std::vector<float> result_data(a->data->size());
     
-    #pragma omp parallel for simd
+    #pragma omp parallel for simd if(a->data->size() > 16384)
     for (size_t i = 0; i < a->data->size(); ++i) {
         result_data[i] = (*a->data)[i] * scalar;
     }
@@ -189,7 +239,7 @@ std::shared_ptr<Tensor> mul_scalar(const std::shared_ptr<Tensor>& a, float scala
             if (a->requires_grad) {
                 if (!a->grad) a->zero_grad();
                 
-                #pragma omp parallel for simd
+                #pragma omp parallel for simd if(out->grad->data->size() > 16384)
                 for (size_t i = 0; i < out->grad->data->size(); ++i) {
                     (*a->grad->data)[i] += scalar * (*out->grad->data)[i];
                 }
@@ -215,47 +265,78 @@ std::shared_ptr<Tensor> pow(const std::shared_ptr<Tensor>& a, const std::shared_
     BroadcastInfo info = setup_broadcast(a, b);
     std::vector<float> result_data(info.out_size);
     
-    #pragma omp parallel for
-    for (int i = 0; i < info.out_size; ++i) {
-        int temp = i, idx_a = 0, idx_b = 0;
-        for (int d = 0; d < (int)info.out_shape.size(); ++d) {
-            int coord = temp / info.out_strides[d];
-            temp %= info.out_strides[d];
-            idx_a += coord * info.strides_a[d];
-            idx_b += coord * info.strides_b[d];
+    bool a_contig = (info.strides_a == info.out_strides);
+    bool b_contig = (info.strides_b == info.out_strides);
+
+    if (a_contig && b_contig) {
+        #pragma omp parallel for simd if(info.out_size > 16384)
+        for (int i = 0; i < info.out_size; ++i) {
+            result_data[i] = std::pow((*a->data)[i], (*b->data)[i]);
         }
-        result_data[i] = std::pow((*a->data)[idx_a], (*b->data)[idx_b]);
+    } else {
+        #pragma omp parallel for if(info.out_size > 16384)
+        for (int i = 0; i < info.out_size; ++i) {
+            int temp = i, idx_a = 0, idx_b = 0;
+            for (int d = 0; d < (int)info.out_shape.size(); ++d) {
+                int coord = temp / info.out_strides[d];
+                temp %= info.out_strides[d];
+                idx_a += coord * info.strides_a[d];
+                idx_b += coord * info.strides_b[d];
+            }
+            result_data[i] = std::pow((*a->data)[idx_a], (*b->data)[idx_b]);
+        }
     }
     auto out = std::make_shared<Tensor>(result_data, info.out_shape);
     if (a->requires_grad || b->requires_grad) {
         out->requires_grad = true;
         out->_prev = {a, b};
-        out->_backward = [out, a, b, info]() {
+        out->_backward = [out, a, b, info, a_contig, b_contig]() {
             if (a->requires_grad && !a->grad) a->zero_grad();
             if (b->requires_grad && !b->grad) b->zero_grad();
             
-            #pragma omp parallel for
-            for (int i = 0; i < info.out_size; ++i) {
-                int temp = i, idx_a = 0, idx_b = 0;
-                for (int d = 0; d < (int)info.out_shape.size(); ++d) {
-                    int coord = temp / info.out_strides[d];
-                    temp %= info.out_strides[d];
-                    idx_a += coord * info.strides_a[d];
-                    idx_b += coord * info.strides_b[d];
+            if (a_contig && b_contig) {
+                #pragma omp parallel for simd if(info.out_size > 16384)
+                for (int i = 0; i < info.out_size; ++i) {
+                    float grad_out = (*out->grad->data)[i];
+                    float val_a = (*a->data)[i];
+                    float val_b = (*b->data)[i];
+                    if (a->requires_grad) {
+                        (*a->grad->data)[i] += val_b * std::pow(val_a, val_b - 1.0f) * grad_out;
+                    }
+                    if (b->requires_grad) {
+                        (*b->grad->data)[i] += (*out->data)[i] * std::log(val_a + 1e-8f) * grad_out;
+                    }
                 }
-                float grad_out = (*out->grad->data)[i];
-                float val_a = (*a->data)[idx_a];
-                float val_b = (*b->data)[idx_b];
-                
-                if (a->requires_grad) {
-                    float val = val_b * std::pow(val_a, val_b - 1.0f) * grad_out;
-                    #pragma omp atomic
-                    (*a->grad->data)[idx_a] += val;
-                }
-                if (b->requires_grad) {
-                    float val = (*out->data)[i] * std::log(val_a + 1e-8f) * grad_out;
-                    #pragma omp atomic
-                    (*b->grad->data)[idx_b] += val;
+            } else {
+                #pragma omp parallel for if(info.out_size > 16384)
+                for (int i = 0; i < info.out_size; ++i) {
+                    int temp = i, idx_a = 0, idx_b = 0;
+                    for (int d = 0; d < (int)info.out_shape.size(); ++d) {
+                        int coord = temp / info.out_strides[d];
+                        temp %= info.out_strides[d];
+                        idx_a += coord * info.strides_a[d];
+                        idx_b += coord * info.strides_b[d];
+                    }
+                    float grad_out = (*out->grad->data)[i];
+                    float val_a = (*a->data)[idx_a];
+                    float val_b = (*b->data)[idx_b];
+                    
+                    if (a->requires_grad) {
+                        float val = val_b * std::pow(val_a, val_b - 1.0f) * grad_out;
+                        if (a_contig) { (*a->grad->data)[idx_a] += val; }
+                        else { 
+                            #pragma omp atomic
+                            (*a->grad->data)[idx_a] += val; 
+                        }
+                    }
+                    if (b->requires_grad) {
+                        float val = (*out->data)[i] * std::log(val_a + 1e-8f) * grad_out;
+                        if (b_contig) { (*b->grad->data)[idx_b] += val; }
+                        else { 
+                            #pragma omp atomic
+                            (*b->grad->data)[idx_b] += val; 
+                        }
+                    }
                 }
             }
         };
@@ -266,7 +347,7 @@ std::shared_ptr<Tensor> pow(const std::shared_ptr<Tensor>& a, const std::shared_
 std::shared_ptr<Tensor> pow_scalar(const std::shared_ptr<Tensor>& a, float scalar) {
     std::vector<float> result_data(a->data->size());
     
-    #pragma omp parallel for simd
+    #pragma omp parallel for simd if(a->data->size() > 16384)
     for (size_t i = 0; i < a->data->size(); ++i) {
         result_data[i] = std::pow((*a->data)[i], scalar);
     }
@@ -278,7 +359,7 @@ std::shared_ptr<Tensor> pow_scalar(const std::shared_ptr<Tensor>& a, float scala
             if (a->requires_grad) {
                 if (!a->grad) a->zero_grad();
                 
-                #pragma omp parallel for simd
+                #pragma omp parallel for simd if(out->grad->data->size() > 16384)
                 for (size_t i = 0; i < out->grad->data->size(); ++i) {
                     (*a->grad->data)[i] += scalar * std::pow((*a->data)[i], scalar - 1) * (*out->grad->data)[i];
                 }
@@ -291,7 +372,7 @@ std::shared_ptr<Tensor> pow_scalar(const std::shared_ptr<Tensor>& a, float scala
 std::shared_ptr<Tensor> rpow_scalar(const std::shared_ptr<Tensor>& a, float scalar) {
     std::vector<float> result_data(a->data->size());
     
-    #pragma omp parallel for simd
+    #pragma omp parallel for simd if(a->data->size() > 16384)
     for (size_t i = 0; i < a->data->size(); ++i) {
         result_data[i] = std::pow(scalar, (*a->data)[i]);
     }
@@ -303,7 +384,7 @@ std::shared_ptr<Tensor> rpow_scalar(const std::shared_ptr<Tensor>& a, float scal
             if (a->requires_grad) {
                 if (!a->grad) a->zero_grad();
                 
-                #pragma omp parallel for simd
+                #pragma omp parallel for simd if(out->grad->data->size() > 16384)
                 for (size_t i = 0; i < out->grad->data->size(); ++i) {
                     (*a->grad->data)[i] += (*out->data)[i] * std::log(scalar + 1e-8f) * (*out->grad->data)[i];
                 }
@@ -399,7 +480,7 @@ std::shared_ptr<Tensor> matmul(const std::shared_ptr<Tensor>& a, const std::shar
             offset_b += coord * b_batch_strides[d];
         }
         int offset_out = b_idx * M * N;
-        #pragma omp parallel for schedule(dynamic)
+        #pragma omp parallel for schedule(dynamic) if(M * N * K > 16384)
         for (int m_b = 0; m_b < M; m_b += BLOCK_M) {
             for (int k_b = 0; k_b < K; k_b += BLOCK_K) {
                 for (int n_b = 0; n_b < N; n_b += BLOCK_N) {
@@ -446,7 +527,7 @@ std::shared_ptr<Tensor> matmul(const std::shared_ptr<Tensor>& a, const std::shar
                 }
                 int offset_out = b_idx * M * N;
                 if (a->requires_grad) {
-                    #pragma omp parallel for schedule(dynamic)
+                    #pragma omp parallel for schedule(dynamic) if(M * N * K > 16384)
                     for (int m_b = 0; m_b < M; m_b += BLOCK_M) {
                         for (int k_b = 0; k_b < K; k_b += BLOCK_K) {
                             for (int n_b = 0; n_b < N; n_b += BLOCK_N) {
@@ -471,7 +552,7 @@ std::shared_ptr<Tensor> matmul(const std::shared_ptr<Tensor>& a, const std::shar
                     }
                 }
                 if (b->requires_grad) {
-                    #pragma omp parallel for schedule(dynamic)
+                    #pragma omp parallel for schedule(dynamic) if(M * N * K > 16384)
                     for (int k_b = 0; k_b < K; k_b += BLOCK_K) {
                         for (int m_b = 0; m_b < M; m_b += BLOCK_M) {
                             for (int n_b = 0; n_b < N; n_b += BLOCK_N) {

@@ -8,7 +8,7 @@
 std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, bool keepdim) {
     float total = 0;
     
-    #pragma omp parallel for simd reduction(+:total)
+    #pragma omp parallel for simd reduction(+:total) if(a->data->size() > 16384)
     for (size_t i = 0; i < a->data->size(); ++i) {
         total += (*a->data)[i];
     }
@@ -25,7 +25,7 @@ std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, bool keepdim) {
             if (!a->grad) a->zero_grad();
             float upstream_grad = (*out->grad->data)[0];
             
-            #pragma omp parallel for simd
+            #pragma omp parallel for simd if(a->grad->data->size() > 16384)
             for (size_t i = 0; i < a->grad->data->size(); ++i) {
                 (*a->grad->data)[i] += upstream_grad;
             }
@@ -64,7 +64,7 @@ std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, int dim, bool keep
 
     std::vector<float> out_data(out_size, 0.0f);
     
-    #pragma omp parallel for
+    #pragma omp parallel for if(a->data->size() > 16384)
     for (int i = 0; i < (int)a->data->size(); ++i) {
         int temp_i = i;
         int out_idx = 0;
@@ -88,7 +88,7 @@ std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, int dim, bool keep
         out->_backward = [out, a, dim, out_strides, a_strides, keepdim]() {
             if (!a->grad) a->zero_grad();            
             
-            #pragma omp parallel for
+            #pragma omp parallel for if(a->data->size() > 16384)
             for (int i = 0; i < (int)a->data->size(); ++i) {
                 int temp_i = i;
                 int out_idx = 0;
@@ -110,7 +110,7 @@ std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, int dim, bool keep
 std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, bool keepdim) {
     float total = 1.0f;
     
-    #pragma omp parallel for simd reduction(*:total)
+    #pragma omp parallel for simd reduction(*:total) if(a->data->size() > 16384)
     for (size_t i = 0; i < a->data->size(); ++i) {
         total *= (*a->data)[i];
     }
@@ -125,7 +125,7 @@ std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, bool keepdim) {
             int zero_count = 0;
             float non_zero_prod = 1.0f;
             
-            #pragma omp parallel for reduction(+:zero_count) reduction(*:non_zero_prod)
+            #pragma omp parallel for reduction(+:zero_count) reduction(*:non_zero_prod) if(a->data->size() > 16384)
             for (size_t i = 0; i < a->data->size(); ++i) {
                 float val = (*a->data)[i];
                 if (val == 0.0f) {
@@ -137,7 +137,7 @@ std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, bool keepdim) {
             float upstream_grad = (*out->grad->data)[0];
             float out_val = (*out->data)[0];
             
-            #pragma omp parallel for simd
+            #pragma omp parallel for simd if(a->data->size() > 16384)
             for (size_t i = 0; i < a->data->size(); ++i) {
                 float val = (*a->data)[i];
                 float local_grad = 0.0f;
@@ -182,7 +182,7 @@ std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, int dim, bool kee
 
     std::vector<float> out_data(out_size, 1.0f);
     
-    #pragma omp parallel for
+    #pragma omp parallel for if(a->data->size() > 16384)
     for (int i = 0; i < (int)a->data->size(); ++i) {
         int temp_i = i;
         int out_idx = 0;
@@ -207,7 +207,7 @@ std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, int dim, bool kee
             std::vector<int> zero_counts(out_size, 0);
             std::vector<float> non_zero_prods(out_size, 1.0f);
             
-            #pragma omp parallel for
+            #pragma omp parallel for if(a->data->size() > 16384)
             for (int i = 0; i < (int)a->data->size(); ++i) {
                 int temp_i = i;
                 int out_idx = 0;
@@ -229,7 +229,7 @@ std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, int dim, bool kee
                 }
             }
             
-            #pragma omp parallel for
+            #pragma omp parallel for if(a->data->size() > 16384)
             for (int i = 0; i < (int)a->data->size(); ++i) {
                 int temp_i = i;
                 int out_idx = 0;
@@ -277,7 +277,7 @@ std::shared_ptr<Tensor> max(const std::shared_ptr<Tensor>& a, bool keepdim) {
     float max_val = -std::numeric_limits<float>::infinity();
     int argmax = -1;
 
-    #pragma omp parallel
+    #pragma omp parallel if(a->data->size() > 16384)
     {
         float local_max = -std::numeric_limits<float>::infinity();
         int local_argmax = -1;
@@ -349,7 +349,7 @@ std::shared_ptr<Tensor> max(const std::shared_ptr<Tensor>& a, int dim, bool keep
     std::vector<float> out_data(out_size, -std::numeric_limits<float>::infinity());
     std::vector<int> argmax(out_size, -1);
 
-    #pragma omp parallel for
+    #pragma omp parallel for if(a->data->size() > 16384)
     for (int i = 0; i < (int)a->data->size(); ++i) {
         int temp_i = i;
         int out_idx = 0;
@@ -381,7 +381,7 @@ std::shared_ptr<Tensor> max(const std::shared_ptr<Tensor>& a, int dim, bool keep
         out->_prev = {a};
         out->_backward = [out, a, argmax]() {
             if (!a->grad) a->zero_grad();
-            #pragma omp parallel for
+            #pragma omp parallel for if(out->data->size() > 16384)
             for (int out_idx = 0; out_idx < (int)out->data->size(); ++out_idx) {
                 int winner_idx = argmax[out_idx];
                 if (winner_idx != -1) {
@@ -398,7 +398,7 @@ std::shared_ptr<Tensor> min(const std::shared_ptr<Tensor>& a, bool keepdim) {
     float min_val = std::numeric_limits<float>::infinity();
     int argmin = -1;
 
-    #pragma omp parallel
+    #pragma omp parallel if(a->data->size() > 16384)
     {
         float local_min = std::numeric_limits<float>::infinity();
         int local_argmin = -1;
@@ -470,7 +470,7 @@ std::shared_ptr<Tensor> min(const std::shared_ptr<Tensor>& a, int dim, bool keep
     std::vector<float> out_data(out_size, std::numeric_limits<float>::infinity());
     std::vector<int> argmin(out_size, -1);
 
-    #pragma omp parallel for
+    #pragma omp parallel for if(a->data->size() > 16384)
     for (int i = 0; i < (int)a->data->size(); ++i) {
         int temp_i = i;
         int out_idx = 0;
@@ -502,7 +502,7 @@ std::shared_ptr<Tensor> min(const std::shared_ptr<Tensor>& a, int dim, bool keep
         out->_prev = {a};
         out->_backward = [out, a, argmin]() {
             if (!a->grad) a->zero_grad();
-            #pragma omp parallel for
+            #pragma omp parallel for if(out->data->size() > 16384)
             for (int out_idx = 0; out_idx < (int)out->data->size(); ++out_idx) {
                 int winner_idx = argmin[out_idx];
                 if (winner_idx != -1) {
