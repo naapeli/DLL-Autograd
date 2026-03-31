@@ -6,7 +6,14 @@
 #include <omp.h>
 #include <memory>
 
+#ifdef DLL_GPU_ENABLED
+#include "ops/gpu_reduce.h"
+#endif
+
 std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, bool keepdim) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return sum_gpu(a, keepdim);
+#endif
     float total = 0;
     
     #pragma omp parallel for simd reduction(+:total) if(a->data->size() > 16384)
@@ -41,6 +48,9 @@ std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, bool keepdim) {
 }
 
 std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, int dim, bool keepdim) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return sum_gpu(a, dim, keepdim);
+#endif
     if (dim < 0) dim += a->shape.size();
     std::vector<int> out_shape;
     for (int i = 0; i < (int)a->shape.size(); ++i) {
@@ -119,6 +129,9 @@ std::shared_ptr<Tensor> sum(const std::shared_ptr<Tensor>& a, int dim, bool keep
 }
 
 std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, bool keepdim) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return prod_gpu(a, keepdim);
+#endif
     float total = 1.0f;
     
     #pragma omp parallel for simd reduction(*:total) if(a->data->size() > 16384)
@@ -170,6 +183,9 @@ std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, bool keepdim) {
 }
 
 std::shared_ptr<Tensor> prod(const std::shared_ptr<Tensor>& a, int dim, bool keepdim) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return prod_gpu(a, dim, keepdim);
+#endif
     if (dim < 0) dim += a->shape.size();
     std::vector<int> out_shape;
     for (int i = 0; i < (int)a->shape.size(); ++i) {
@@ -295,6 +311,9 @@ std::shared_ptr<Tensor> mean(const std::shared_ptr<Tensor>& a, int dim, bool kee
 }
 
 std::shared_ptr<Tensor> max(const std::shared_ptr<Tensor>& a, bool keepdim) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return max_gpu(a, keepdim);
+#endif
     float max_val = -std::numeric_limits<float>::infinity();
     int argmax = -1;
 
@@ -344,6 +363,9 @@ std::shared_ptr<Tensor> max(const std::shared_ptr<Tensor>& a, bool keepdim) {
 }
 
 std::shared_ptr<Tensor> max(const std::shared_ptr<Tensor>& a, int dim, bool keepdim) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return max_gpu(a, dim, keepdim);
+#endif
     if (dim < 0) dim += a->shape.size();
     
     std::vector<int> out_shape;
@@ -426,6 +448,9 @@ std::shared_ptr<Tensor> max(const std::shared_ptr<Tensor>& a, int dim, bool keep
 }
 
 std::shared_ptr<Tensor> min(const std::shared_ptr<Tensor>& a, bool keepdim) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return min_gpu(a, keepdim);
+#endif
     float min_val = std::numeric_limits<float>::infinity();
     int argmin = -1;
 
@@ -475,6 +500,9 @@ std::shared_ptr<Tensor> min(const std::shared_ptr<Tensor>& a, bool keepdim) {
 }
 
 std::shared_ptr<Tensor> min(const std::shared_ptr<Tensor>& a, int dim, bool keepdim) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return min_gpu(a, dim, keepdim);
+#endif
     if (dim < 0) dim += a->shape.size();
     
     std::vector<int> out_shape;

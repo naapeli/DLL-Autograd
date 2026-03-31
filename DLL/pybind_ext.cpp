@@ -7,6 +7,10 @@
 #include "Random/randomTensor.h"
 #include "Random/random.h"
 
+#ifdef DLL_GPU_ENABLED
+#include "gpu_context.h"
+#endif
+
 namespace py = pybind11;
 
 PYBIND11_MODULE(_C, m) {
@@ -16,6 +20,7 @@ PYBIND11_MODULE(_C, m) {
 
         .def_property_readonly("shape", &Tensor::get_shape)
         .def_property_readonly("data", &Tensor::get_data)
+        .def_readonly("device", &Tensor::device)
         
         .def("__getitem__", &Tensor::slice)
 
@@ -26,6 +31,11 @@ PYBIND11_MODULE(_C, m) {
 
         .def("item", &Tensor::item)
         .def("__repr__", &Tensor::repr)
+
+        // Device management
+        .def("to", &Tensor::to, py::arg("device"))
+        .def("cpu", &Tensor::cpu)
+        .def("is_gpu", &Tensor::is_gpu)
 
         .def("transpose", [](const std::shared_ptr<Tensor>& a, int dim0, int dim1) { return transpose(a, dim0, dim1); }, py::arg("dim0") = -2, py::arg("dim1") = -1)
         .def("exp", [](const std::shared_ptr<Tensor>& a) { return exp(a); })
@@ -79,4 +89,12 @@ PYBIND11_MODULE(_C, m) {
     m.def("rand", [](std::vector<int> shape, float min = 0.0, float max = 1.0) { return randomTensor::rand(shape, min, max); }, py::arg("shape"), py::arg("min") = 0, py::arg("max") = 1);
     m.def("randn", [](std::vector<int> shape, float mean = 0.0, float stddev = 1.0) { return randomTensor::randn(shape, mean, stddev); }, py::arg("shape"), py::arg("mu") = 0, py::arg("std") = 1);
     m.def("seed", [](uint32_t seed){ randomGen::set_seed(seed); }, py::arg("seed"));
+
+#ifdef DLL_GPU_ENABLED
+    m.def("gpu_available", []() { return GPUContext::instance().is_available(); });
+    m.def("gpu_device_name", []() { return GPUContext::instance().device_name(); });
+#else
+    m.def("gpu_available", []() { return false; });
+    m.def("gpu_device_name", []() { return std::string("No GPU support (built without OpenCL)"); });
+#endif
 }

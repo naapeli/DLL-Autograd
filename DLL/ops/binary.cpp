@@ -6,6 +6,10 @@
 #include <memory>
 #include <cblas.h>
 
+#ifdef DLL_GPU_ENABLED
+#include "ops/gpu_binary.h"
+#endif
+
 struct BroadcastInfo {
     std::vector<int> out_shape;
     std::vector<int> out_strides;
@@ -54,6 +58,13 @@ BroadcastInfo setup_broadcast(const std::shared_ptr<Tensor>& a, const std::share
 }
 
 std::shared_ptr<Tensor> add(const std::shared_ptr<Tensor>& a, const std::shared_ptr<Tensor>& b) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu() || b->is_gpu()) {
+        auto b2 = (a->is_gpu() && !b->is_gpu()) ? ensure_same_device(a, b) : b;
+        auto a2 = (!a->is_gpu() && b2->is_gpu()) ? ensure_same_device(b2, a) : a;
+        return add_gpu(a2, b2);
+    }
+#endif
     BroadcastInfo info = setup_broadcast(a, b);
     std::vector<float> result_data(info.out_size);
     
@@ -131,6 +142,9 @@ std::shared_ptr<Tensor> add(const std::shared_ptr<Tensor>& a, const std::shared_
 }
 
 std::shared_ptr<Tensor> add_scalar(const std::shared_ptr<Tensor>& a, float scalar) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return add_scalar_gpu(a, scalar);
+#endif
     std::vector<float> result_data(a->data->size());
     
     #pragma omp parallel for simd if(a->data->size() > 16384)
@@ -159,6 +173,13 @@ std::shared_ptr<Tensor> add_scalar(const std::shared_ptr<Tensor>& a, float scala
 }
 
 std::shared_ptr<Tensor> mul(const std::shared_ptr<Tensor>& a, const std::shared_ptr<Tensor>& b) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu() || b->is_gpu()) {
+        auto b2 = (a->is_gpu() && !b->is_gpu()) ? ensure_same_device(a, b) : b;
+        auto a2 = (!a->is_gpu() && b2->is_gpu()) ? ensure_same_device(b2, a) : a;
+        return mul_gpu(a2, b2);
+    }
+#endif
     BroadcastInfo info = setup_broadcast(a, b);
     std::vector<float> result_data(info.out_size);
     
@@ -238,6 +259,9 @@ std::shared_ptr<Tensor> mul(const std::shared_ptr<Tensor>& a, const std::shared_
 }
 
 std::shared_ptr<Tensor> mul_scalar(const std::shared_ptr<Tensor>& a, float scalar) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return mul_scalar_gpu(a, scalar);
+#endif
     std::vector<float> result_data(a->data->size());
     
     #pragma omp parallel for simd if(a->data->size() > 16384)
@@ -280,6 +304,13 @@ std::shared_ptr<Tensor> rsub_scalar(const std::shared_ptr<Tensor>& a, float scal
 }
 
 std::shared_ptr<Tensor> pow(const std::shared_ptr<Tensor>& a, const std::shared_ptr<Tensor>& b) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu() || b->is_gpu()) {
+        auto b2 = (a->is_gpu() && !b->is_gpu()) ? ensure_same_device(a, b) : b;
+        auto a2 = (!a->is_gpu() && b2->is_gpu()) ? ensure_same_device(b2, a) : a;
+        return pow_gpu(a2, b2);
+    }
+#endif
     BroadcastInfo info = setup_broadcast(a, b);
     std::vector<float> result_data(info.out_size);
     
@@ -368,6 +399,9 @@ std::shared_ptr<Tensor> pow(const std::shared_ptr<Tensor>& a, const std::shared_
 }
 
 std::shared_ptr<Tensor> pow_scalar(const std::shared_ptr<Tensor>& a, float scalar) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return pow_scalar_gpu(a, scalar);
+#endif
     std::vector<float> result_data(a->data->size());
     
     #pragma omp parallel for simd if(a->data->size() > 16384)
@@ -398,6 +432,9 @@ std::shared_ptr<Tensor> pow_scalar(const std::shared_ptr<Tensor>& a, float scala
 }
 
 std::shared_ptr<Tensor> rpow_scalar(const std::shared_ptr<Tensor>& a, float scalar) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return rpow_scalar_gpu(a, scalar);
+#endif
     std::vector<float> result_data(a->data->size());
     
     #pragma omp parallel for simd if(a->data->size() > 16384)
@@ -440,6 +477,13 @@ std::shared_ptr<Tensor> rdiv_scalar(const std::shared_ptr<Tensor>& a, float scal
 }
 
 std::shared_ptr<Tensor> matmul(const std::shared_ptr<Tensor>& a, const std::shared_ptr<Tensor>& b) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu() || b->is_gpu()) {
+        auto b2 = (a->is_gpu() && !b->is_gpu()) ? ensure_same_device(a, b) : b;
+        auto a2 = (!a->is_gpu() && b2->is_gpu()) ? ensure_same_device(b2, a) : a;
+        return matmul_gpu(a2, b2);
+    }
+#endif
     int ndim_a = a->shape.size();
     int ndim_b = b->shape.size();
     if (ndim_a < 2 || ndim_b < 2) {

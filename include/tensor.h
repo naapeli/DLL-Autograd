@@ -2,8 +2,13 @@
 #include <vector>
 #include <memory>
 #include <functional>
+#include <string>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+
+#ifdef DLL_GPU_ENABLED
+#include "gpu_buffer.h"
+#endif
 
 namespace py = pybind11;
 
@@ -17,10 +22,21 @@ public:
     std::vector<std::shared_ptr<Tensor>> _prev;
     std::function<void()> _backward = []() {};
 
+    // Device tracking
+    std::string device = "cpu";
+#ifdef DLL_GPU_ENABLED
+    std::shared_ptr<GPUBuffer> gpu_data;
+#endif
+
     // Constructors
     Tensor(std::vector<float> d, std::vector<int> s);
     Tensor(std::shared_ptr<std::vector<float>> shared_data, std::vector<int> s);
     Tensor(py::list python_list);
+
+#ifdef DLL_GPU_ENABLED
+    // GPU constructor (data lives on GPU)
+    Tensor(std::shared_ptr<GPUBuffer> gpu_buf, std::vector<int> s);
+#endif
 
     // Getters
     std::vector<int> get_shape() const;
@@ -34,4 +50,19 @@ public:
 
     // backprop
     void backward();
+
+    // Device management
+    std::shared_ptr<Tensor> to(const std::string& target_device);
+    std::shared_ptr<Tensor> cpu();
+    bool is_gpu() const;
+    int numel() const;
+
+    // Ensure CPU data is available (for Python access)
+    void ensure_cpu_data() const;
 };
+
+// Helper: warn and auto-transfer for mixed-device ops
+#ifdef DLL_GPU_ENABLED
+std::shared_ptr<Tensor> ensure_same_device(const std::shared_ptr<Tensor>& a,
+                                             const std::shared_ptr<Tensor>& b);
+#endif

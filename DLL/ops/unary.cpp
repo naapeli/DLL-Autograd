@@ -6,7 +6,14 @@
 #include <stdexcept>
 #include <omp.h>
 
+#ifdef DLL_GPU_ENABLED
+#include "ops/gpu_unary.h"
+#endif
+
 std::shared_ptr<Tensor> transpose(const std::shared_ptr<Tensor>& a, int dim0, int dim1) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return transpose_gpu(a, dim0, dim1);
+#endif
     int ndim = a->shape.size();
     if (ndim < 2) {
         throw std::runtime_error("Transpose requires at least 2 dimensions.");
@@ -88,6 +95,9 @@ std::shared_ptr<Tensor> transpose(const std::shared_ptr<Tensor>& a, int dim0, in
 }
 
 std::shared_ptr<Tensor> exp(const std::shared_ptr<Tensor>& a) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return exp_gpu(a);
+#endif
     auto out_data = std::make_shared<std::vector<float>>(a->data->size());
     float* a_ptr = a->data->data();
     float* out_ptr = out_data->data();
@@ -121,6 +131,9 @@ std::shared_ptr<Tensor> exp(const std::shared_ptr<Tensor>& a) {
 }
 
 std::shared_ptr<Tensor> log(const std::shared_ptr<Tensor>& a) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return log_gpu(a);
+#endif
     auto out_data = std::make_shared<std::vector<float>>(a->data->size());
     float* a_ptr = a->data->data();
     float* out_ptr = out_data->data();
@@ -154,6 +167,9 @@ std::shared_ptr<Tensor> log(const std::shared_ptr<Tensor>& a) {
 }
 
 std::shared_ptr<Tensor> sqrt(const std::shared_ptr<Tensor>& a) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return sqrt_gpu(a);
+#endif
     auto out_data = std::make_shared<std::vector<float>>(a->data->size());
     float* a_ptr = a->data->data();
     float* out_ptr = out_data->data();
@@ -187,6 +203,9 @@ std::shared_ptr<Tensor> sqrt(const std::shared_ptr<Tensor>& a) {
 }
 
 std::shared_ptr<Tensor> cbrt(const std::shared_ptr<Tensor>& a) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return cbrt_gpu(a);
+#endif
     auto out_data = std::make_shared<std::vector<float>>(a->data->size());
     float* a_ptr = a->data->data();
     float* out_ptr = out_data->data();
@@ -221,6 +240,9 @@ std::shared_ptr<Tensor> cbrt(const std::shared_ptr<Tensor>& a) {
 }
 
 std::shared_ptr<Tensor> abs(const std::shared_ptr<Tensor>& a) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return abs_gpu(a);
+#endif
     auto out_data = std::make_shared<std::vector<float>>(a->data->size());
     float* a_ptr = a->data->data();
     float* out_ptr = out_data->data();
@@ -256,6 +278,9 @@ std::shared_ptr<Tensor> abs(const std::shared_ptr<Tensor>& a) {
 }
 
 std::shared_ptr<Tensor> sin(const std::shared_ptr<Tensor>& a) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return sin_gpu(a);
+#endif
     auto out_data = std::make_shared<std::vector<float>>(a->data->size());
     float* a_ptr = a->data->data();
     float* out_ptr = out_data->data();
@@ -289,6 +314,9 @@ std::shared_ptr<Tensor> sin(const std::shared_ptr<Tensor>& a) {
 }
 
 std::shared_ptr<Tensor> cos(const std::shared_ptr<Tensor>& a) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return cos_gpu(a);
+#endif
     auto out_data = std::make_shared<std::vector<float>>(a->data->size());
     float* a_ptr = a->data->data();
     float* out_ptr = out_data->data();
@@ -322,6 +350,9 @@ std::shared_ptr<Tensor> cos(const std::shared_ptr<Tensor>& a) {
 }
 
 std::shared_ptr<Tensor> relu(const std::shared_ptr<Tensor>& a) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return relu_gpu(a);
+#endif
     auto out_data = std::make_shared<std::vector<float>>(a->data->size());
     float* a_ptr = a->data->data();
     float* out_ptr = out_data->data();
@@ -357,6 +388,9 @@ std::shared_ptr<Tensor> relu(const std::shared_ptr<Tensor>& a) {
 }
 
 std::shared_ptr<Tensor> tanh(const std::shared_ptr<Tensor>& a) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return tanh_gpu(a);
+#endif
     auto out_data = std::make_shared<std::vector<float>>(a->data->size());
     float* a_ptr = a->data->data();
     float* out_ptr = out_data->data();
@@ -391,6 +425,9 @@ std::shared_ptr<Tensor> tanh(const std::shared_ptr<Tensor>& a) {
 }
 
 std::shared_ptr<Tensor> sigmoid(const std::shared_ptr<Tensor>& a) {
+#ifdef DLL_GPU_ENABLED
+    if (a->is_gpu()) return sigmoid_gpu(a);
+#endif
     auto out_data = std::make_shared<std::vector<float>>(a->data->size());
     float* a_ptr = a->data->data();
     float* out_ptr = out_data->data();

@@ -6,6 +6,10 @@
 #include <set>
 #include <vector>
 
+#ifdef DLL_GPU_ENABLED
+#include "gpu_context.h"
+#endif
+
 Tensor::Tensor(std::vector<float> d, std::vector<int> s) : shape(s) {
     data = std::make_shared<std::vector<float>>(d);
     
@@ -19,24 +23,109 @@ Tensor::Tensor(std::vector<float> d, std::vector<int> s) : shape(s) {
 Tensor::Tensor(std::shared_ptr<std::vector<float>> shared_data, std::vector<int> s) 
     : data(shared_data), shape(s) {}
 
+#ifdef DLL_GPU_ENABLED
+Tensor::Tensor(std::shared_ptr<GPUBuffer> gpu_buf, std::vector<int> s) 
+    : shape(s), device("gpu"), gpu_data(gpu_buf) {
+    // CPU data is empty — will be populated on demand via ensure_cpu_data()
+    data = std::make_shared<std::vector<float>>();
+}
+#endif
+
 std::vector<int> Tensor::get_shape() const { return shape; }
 
-std::vector<float> Tensor::get_data() const { return *data; }
+std::vector<float> Tensor::get_data() const { 
+    ensure_cpu_data();
+    return *data; 
+}
 
 float Tensor::item() const {
-    size_t numel = 1;
-    for (int dim : shape) {
-        numel *= dim;
-    }
-
-    if (numel != 1) {
+    ensure_cpu_data();
+    size_t n = 1;
+    for (int dim : shape) n *= dim;
+    if (n != 1) {
         throw std::runtime_error(
-            "ValueError: item() can only be called on tensors with 1 element, but this tensor has " + std::to_string(numel) + " elements."
+            "ValueError: item() can only be called on tensors with 1 element, but this tensor has " + std::to_string(n) + " elements."
         );
     }
-
     return data->at(0);
 }
+
+int Tensor::numel() const {
+    int n = 1;
+    for (int dim : shape) n *= dim;
+    return n;
+}
+
+bool Tensor::is_gpu() const {
+    return device == "gpu";
+}
+
+void Tensor::ensure_cpu_data() const {
+#ifdef DLL_GPU_ENABLED
+    if (device == "gpu" && gpu_data && (data->empty() || data->size() != (size_t)numel())) {
+        // Download GPU data to CPU — cast away const for lazy sync
+        auto* mutable_this = const_cast<Tensor*>(this);
+        int n = numel();
+        mutable_this->data = std::make_shared<std::vector<float>>(n);
+        gpu_data->read_to(mutable_this->data->data(), n);
+    }
+#endif
+}
+
+std::shared_ptr<Tensor> Tensor::to(const std::string& target_device) {
+    if (target_device == device) {
+        return shared_from_this();
+    }
+#ifdef DLL_GPU_ENABLED
+    if (target_device == "gpu") {
+        if (!GPUContext::instance().is_available()) {
+            throw std::runtime_error("No GPU available. Cannot move tensor to GPU.");
+        }
+        ensure_cpu_data();
+        int n = numel();
+        auto gpu_buf = std::make_shared<GPUBuffer>(data->data(), n);
+        auto out = std::make_shared<Tensor>(gpu_buf, shape);
+        out->requires_grad = requires_grad;
+        return out;
+    } else if (target_device == "cpu") {
+        return cpu();
+    }
+#endif
+    throw std::invalid_argument("Unknown device: " + target_device + ". Expected 'cpu' or 'gpu'.");
+}
+
+std::shared_ptr<Tensor> Tensor::cpu() {
+    if (device == "cpu") return shared_from_this();
+#ifdef DLL_GPU_ENABLED
+    ensure_cpu_data();
+    auto out = std::make_shared<Tensor>(*data, shape);
+    out->requires_grad = requires_grad;
+    return out;
+#else
+    return shared_from_this();
+#endif
+}
+
+#ifdef DLL_GPU_ENABLED
+std::shared_ptr<Tensor> ensure_same_device(const std::shared_ptr<Tensor>& a,
+                                             const std::shared_ptr<Tensor>& b) {
+    // If both on same device, return b unchanged
+    if (a->device == b->device) return b;
+    
+    // At least one is on GPU — emit Python warning and auto-transfer to GPU
+    py::gil_scoped_acquire gil;
+    PyErr_WarnEx(PyExc_UserWarning, 
+        "DLL: Tensors on different devices. Automatically moving to GPU. "
+        "For best performance, use .to('gpu') explicitly.", 1);
+    
+    if (a->is_gpu() && !b->is_gpu()) {
+        // Move b to GPU
+        return b->to("gpu");
+    }
+    // Move b to CPU (shouldn't normally happen, but handle it)
+    return b->cpu();
+}
+#endif
 
 namespace {
     void parse_nested_list(const py::handle& obj, std::vector<float>& flat_data, std::vector<int>& shape, int depth) {
@@ -94,6 +183,8 @@ void format_tensor(std::stringstream& ss, const std::vector<float>& data, const 
 }
 
 std::string Tensor::repr() const {
+    ensure_cpu_data();
+    
     bool has_negatives = false;
     for (float v : *data) {
         if (v < 0) {
@@ -119,19 +210,38 @@ std::string Tensor::repr() const {
     for (size_t i = 0; i < shape.size(); ++i) {
         ss << shape[i] << (i == shape.size() - 1 ? "" : ", ");
     }
-    ss << "])";
+    ss << "]";
+    
+    if (device == "gpu") {
+        ss << ", device=gpu";
+    }
+    
+    ss << ")";
     return ss.str();
 }
 
 void Tensor::zero_grad() {
-    int size = 1;
-    for (int dim : shape) size *= dim;
+    int size = numel();
+#ifdef DLL_GPU_ENABLED
+    if (is_gpu()) {
+        auto gpu_buf = std::make_shared<GPUBuffer>(size);
+        // Fill with zeros
+        auto& ctx = GPUContext::instance();
+        cl::Kernel fill = ctx.get_kernel("fill_kernel");
+        fill.setArg(0, gpu_buf->get());
+        fill.setArg(1, 0.0f);
+        fill.setArg(2, size);
+        ctx.get_queue().enqueueNDRangeKernel(fill, cl::NullRange, cl::NDRange((size + 255) / 256 * 256), cl::NDRange(256));
+        ctx.finish();
+        grad = std::make_shared<Tensor>(gpu_buf, shape);
+        return;
+    }
+#endif
     grad = std::make_shared<Tensor>(std::vector<float>(size, 0.0f), shape);
 }
 
 void Tensor::backward() {
-    int size = 1;
-    for (int dim : shape) size *= dim;
+    int size = numel();
     if (size != 1) {
         throw std::runtime_error("grad can be implicitly created only for scalar outputs");
     }
@@ -153,7 +263,21 @@ void Tensor::backward() {
     build_topo(shared_from_this());
 
     if (!this->grad) this->zero_grad();
-    std::fill(this->grad->data->begin(), this->grad->data->end(), 1.0f);
+#ifdef DLL_GPU_ENABLED
+    if (is_gpu()) {
+        // Fill grad with 1.0
+        auto& ctx = GPUContext::instance();
+        cl::Kernel fill = ctx.get_kernel("fill_kernel");
+        fill.setArg(0, this->grad->gpu_data->get());
+        fill.setArg(1, 1.0f);
+        fill.setArg(2, 1);
+        ctx.get_queue().enqueueNDRangeKernel(fill, cl::NullRange, cl::NDRange(1), cl::NullRange);
+        ctx.finish();
+    } else
+#endif
+    {
+        std::fill(this->grad->data->begin(), this->grad->data->end(), 1.0f);
+    }
 
     for (auto it = topo.rbegin(); it != topo.rend(); ++it) {
         (*it)->_backward();
@@ -161,6 +285,8 @@ void Tensor::backward() {
 }
 
 std::shared_ptr<Tensor> Tensor::slice(py::object slices) {
+    ensure_cpu_data();
+    
     py::tuple indices;
     if (py::isinstance<py::tuple>(slices)) {
         indices = slices.cast<py::tuple>();
