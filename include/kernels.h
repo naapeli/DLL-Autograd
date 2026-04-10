@@ -661,6 +661,38 @@ __kernel void fill_int_kernel(__global int* buf, int val, int n) {
     if (i < n) buf[i] = val;
 }
 
+// ============================================================
+// MANIPULATION OPS
+// ============================================================
+
+__kernel void cat_kernel(__global const float* src,
+                         __global float* dst,
+                         int outer_size,
+                         int t_dim,
+                         int target_dim_total,
+                         int inner_size,
+                         int t_offset) {
+    int o = get_global_id(0);
+    int i = get_global_id(1);
+    if (o < outer_size && i < t_dim * inner_size) {
+        dst[(o * target_dim_total + t_offset) * inner_size + i] = src[o * t_dim * inner_size + i];
+    }
+}
+
+__kernel void cat_backward_kernel(__global float* src_grad,
+                                  __global const float* dst_grad,
+                                  int outer_size,
+                                  int t_dim,
+                                  int target_dim_total,
+                                  int inner_size,
+                                  int t_offset) {
+    int o = get_global_id(0);
+    int i = get_global_id(1);
+    if (o < outer_size && i < t_dim * inner_size) {
+        src_grad[o * t_dim * inner_size + i] += dst_grad[(o * target_dim_total + t_offset) * inner_size + i];
+    }
+}
+
 )CL";
 
 #endif // DLL_GPU_ENABLED

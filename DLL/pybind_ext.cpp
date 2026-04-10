@@ -4,6 +4,7 @@
 #include "ops/binary.h"
 #include "ops/unary.h"
 #include "ops/reduce.h"
+#include "ops/linalg.h"
 #include "Random/randomTensor.h"
 #include "Random/random.h"
 
@@ -13,7 +14,14 @@
 
 namespace py = pybind11;
 
+#include "ops/manipulation.h"
+
 PYBIND11_MODULE(_C, m) {
+    m.doc() = "DLL Autograd C++ extension";
+    
+    m.def("cat", &cat, py::arg("tensors"), py::arg("dim") = 0);
+    m.def("stack", &stack, py::arg("tensors"), py::arg("dim") = 0);
+
     py::class_<Tensor, std::shared_ptr<Tensor>>(m, "Tensor")
         .def(py::init<std::vector<float>, std::vector<int>>(), py::arg("data"), py::arg("shape"))
         .def(py::init<py::list>(), py::arg("data"))
@@ -26,7 +34,7 @@ PYBIND11_MODULE(_C, m) {
 
         .def_readwrite("requires_grad", &Tensor::requires_grad)
         .def_property_readonly("grad", [](Tensor& t) { return t.grad; })
-        .def("backward", &Tensor::backward)
+        .def("backward", &Tensor::backward, py::arg("grad") = nullptr)
         .def("zero_grad", &Tensor::zero_grad)
 
         .def("item", &Tensor::item)
@@ -36,6 +44,10 @@ PYBIND11_MODULE(_C, m) {
         .def("to", &Tensor::to, py::arg("device"))
         .def("cpu", &Tensor::cpu)
         .def("is_gpu", &Tensor::is_gpu)
+
+        .def("reshape", &Tensor::reshape, py::arg("shape"))
+        .def("squeeze", &Tensor::squeeze, py::arg("dim") = -1)
+        .def("unsqueeze", &Tensor::unsqueeze, py::arg("dim"))
 
         .def("transpose", [](const std::shared_ptr<Tensor>& a, int dim0, int dim1) { return transpose(a, dim0, dim1); }, py::arg("dim0") = -2, py::arg("dim1") = -1)
         .def("exp", [](const std::shared_ptr<Tensor>& a) { return exp(a); })
@@ -84,7 +96,25 @@ PYBIND11_MODULE(_C, m) {
         .def("var", [](const std::shared_ptr<Tensor>& a, bool keepdim, bool unbiased) { return var(a, keepdim, unbiased); }, py::arg("keepdim") = false, py::arg("unbiased") = true)
         .def("var", [](const std::shared_ptr<Tensor>& a, int dim, bool keepdim, bool unbiased) { return var(a, dim, keepdim, unbiased); }, py::arg("dim"), py::arg("keepdim") = false, py::arg("unbiased") = true)
         .def("std", [](const std::shared_ptr<Tensor>& a, bool keepdim, bool unbiased) { return std_dev(a, keepdim, unbiased); }, py::arg("keepdim") = false, py::arg("unbiased") = true)
-        .def("std", [](const std::shared_ptr<Tensor>& a, int dim, bool keepdim, bool unbiased) { return std_dev(a, dim, keepdim, unbiased); }, py::arg("dim"), py::arg("keepdim") = false, py::arg("unbiased") = true);
+        .def("std", [](const std::shared_ptr<Tensor>& a, int dim, bool keepdim, bool unbiased) { return std_dev(a, dim, keepdim, unbiased); }, py::arg("dim"), py::arg("keepdim") = false, py::arg("unbiased") = true)
+        
+        // Advanced linalg
+        .def("inv", [](const std::shared_ptr<Tensor>& a) { return inverse(a); })
+        .def("det", [](const std::shared_ptr<Tensor>& a) { return determinant(a); })
+        .def("solve", [](const std::shared_ptr<Tensor>& a, const std::shared_ptr<Tensor>& b) { return solve(a, b); }, py::arg("b"))
+        .def("cholesky", [](const std::shared_ptr<Tensor>& a) { return cholesky(a); })
+        .def("svd", [](const std::shared_ptr<Tensor>& a, bool full_matrices) { return svd(a, full_matrices); }, py::arg("full_matrices") = true)
+        .def("diag", [](const std::shared_ptr<Tensor>& a, int diagonal) { return diag(a, diagonal); }, py::arg("diagonal") = 0)
+        .def("eig", [](const std::shared_ptr<Tensor>& a) { return eig(a); })
+        .def("lu", [](const std::shared_ptr<Tensor>& a) { return lu(a); })
+        .def("qr", [](const std::shared_ptr<Tensor>& a) { return qr(a); })
+        .def("matrix_exp", [](const std::shared_ptr<Tensor>& a) { return matrix_exp(a); })
+        .def("lu_factor", [](const std::shared_ptr<Tensor>& a) { return lu_factor(a); })
+        .def("lu_solve", [](const std::shared_ptr<Tensor>& a, const std::shared_ptr<Tensor>& lu, const std::shared_ptr<Tensor>& piv, bool adjoint) {
+            return lu_solve(a, lu, piv, adjoint);
+        }, py::arg("lu"), py::arg("pivots"), py::arg("adjoint") = false)
+        .def("cholesky_solve", [](const std::shared_ptr<Tensor>& a, const std::shared_ptr<Tensor>& l) { return cholesky_solve(a, l); }, py::arg("l"))
+        .def("lstsq", [](const std::shared_ptr<Tensor>& a, const std::shared_ptr<Tensor>& b) { return lstsq(a, b); }, py::arg("b"));
     
     m.def("rand", [](std::vector<int> shape, float min = 0.0, float max = 1.0) { return randomTensor::rand(shape, min, max); }, py::arg("shape"), py::arg("min") = 0, py::arg("max") = 1);
     m.def("randn", [](std::vector<int> shape, float mean = 0.0, float stddev = 1.0) { return randomTensor::randn(shape, mean, stddev); }, py::arg("shape"), py::arg("mu") = 0, py::arg("std") = 1);

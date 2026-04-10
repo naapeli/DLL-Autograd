@@ -90,8 +90,15 @@ std::shared_ptr<Tensor> Tensor::to(const std::string& target_device) {
     } else if (target_device == "cpu") {
         return cpu();
     }
-#endif
     throw std::invalid_argument("Unknown device: " + target_device + ". Expected 'cpu' or 'gpu'.");
+#else
+    if (target_device == "gpu") {
+        throw std::invalid_argument("Unknown device: gpu. GPU support was not enabled in this build.");
+    } else if (target_device == "cpu") {
+        return cpu();
+    }
+    throw std::invalid_argument("Unknown device: " + target_device + ". Expected 'cpu'.");
+#endif
 }
 
 std::shared_ptr<Tensor> Tensor::cpu() {
@@ -240,10 +247,33 @@ void Tensor::zero_grad() {
     grad = std::make_shared<Tensor>(std::vector<float>(size, 0.0f), shape);
 }
 
-void Tensor::backward() {
-    int size = numel();
-    if (size != 1) {
-        throw std::runtime_error("grad can be implicitly created only for scalar outputs");
+void Tensor::backward(std::shared_ptr<Tensor> initial_grad) {
+    if (initial_grad) {
+        if (initial_grad->shape != shape) {
+            throw std::runtime_error("RuntimeError: grad shape mismatch. Expected " + repr() + " shape.");
+        }
+        this->grad = initial_grad;
+    } else {
+        int size = numel();
+        if (size != 1) {
+            throw std::runtime_error("grad can be implicitly created only for scalar outputs");
+        }
+        if (!this->grad) this->zero_grad();
+#ifdef DLL_GPU_ENABLED
+        if (is_gpu()) {
+            // Fill grad with 1.0
+            auto& ctx = GPUContext::instance();
+            cl::Kernel fill = ctx.get_kernel("fill_kernel");
+            fill.setArg(0, this->grad->gpu_data->get());
+            fill.setArg(1, 1.0f);
+            fill.setArg(2, 1);
+            ctx.get_queue().enqueueNDRangeKernel(fill, cl::NullRange, cl::NDRange(1), cl::NullRange);
+            ctx.finish();
+        } else
+#endif
+        {
+            std::fill(this->grad->data->begin(), this->grad->data->end(), 1.0f);
+        }
     }
 
     std::vector<std::shared_ptr<Tensor>> topo;
@@ -261,23 +291,6 @@ void Tensor::backward() {
         };
 
     build_topo(shared_from_this());
-
-    if (!this->grad) this->zero_grad();
-#ifdef DLL_GPU_ENABLED
-    if (is_gpu()) {
-        // Fill grad with 1.0
-        auto& ctx = GPUContext::instance();
-        cl::Kernel fill = ctx.get_kernel("fill_kernel");
-        fill.setArg(0, this->grad->gpu_data->get());
-        fill.setArg(1, 1.0f);
-        fill.setArg(2, 1);
-        ctx.get_queue().enqueueNDRangeKernel(fill, cl::NullRange, cl::NDRange(1), cl::NullRange);
-        ctx.finish();
-    } else
-#endif
-    {
-        std::fill(this->grad->data->begin(), this->grad->data->end(), 1.0f);
-    }
 
     for (auto it = topo.rbegin(); it != topo.rend(); ++it) {
         (*it)->_backward();
@@ -398,4 +411,59 @@ std::shared_ptr<Tensor> Tensor::slice(py::object slices) {
     }
 
     return out;
+}
+
+std::shared_ptr<Tensor> Tensor::reshape(const std::vector<int>& new_shape) {
+    long long new_numel = 1;
+    for (int dim : new_shape) new_numel *= dim;
+    if (new_numel != numel()) {
+        throw std::invalid_argument("Cannot reshape tensor of size " + std::to_string(numel()) + " into shape of size " + std::to_string(new_numel));
+    }
+    
+    // Return a COPY as requested
+    ensure_cpu_data();
+    auto out_data = std::make_shared<std::vector<float>>(*data);
+    auto out = std::make_shared<Tensor>(out_data, new_shape);
+    out->requires_grad = requires_grad;
+    
+    if (requires_grad) {
+        out->_prev = {shared_from_this()};
+        out->_backward = [weak_self = weak_from_this(), out]() {
+            auto self = weak_self.lock();
+            if (self && self->requires_grad && out->grad) {
+                if (!self->grad) self->zero_grad();
+                self->grad->ensure_cpu_data();
+                out->grad->ensure_cpu_data();
+                for (int i = 0; i < out->grad->numel(); ++i) {
+                    (*self->grad->data)[i] += (*out->grad->data)[i];
+                }
+            }
+        };
+    }
+    return out;
+}
+
+std::shared_ptr<Tensor> Tensor::unsqueeze(int dim) {
+    int ndim = (int)shape.size();
+    if (dim < 0) dim += ndim + 1;
+    if (dim < 0 || dim > ndim) throw std::out_of_range("Dimension out of range for unsqueeze");
+    
+    std::vector<int> new_shape = shape;
+    new_shape.insert(new_shape.begin() + dim, 1);
+    return reshape(new_shape);
+}
+
+std::shared_ptr<Tensor> Tensor::squeeze(int dim) {
+    std::vector<int> new_shape;
+    int ndim = (int)shape.size();
+    if (dim == -1) {
+        for (int d : shape) if (d != 1) new_shape.push_back(d);
+        if (new_shape.empty() && !shape.empty()) new_shape = {1};
+    } else {
+        if (dim < 0) dim += ndim;
+        if (dim < 0 || dim >= ndim) throw std::out_of_range("Dimension out of range for squeeze");
+        if (shape[dim] != 1) return reshape(shape); // Still return a copy if we want consistent 'copy' behavior
+        for (int i = 0; i < ndim; ++i) if (i != dim) new_shape.push_back(shape[i]);
+    }
+    return reshape(new_shape);
 }

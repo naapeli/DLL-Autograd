@@ -17,6 +17,7 @@ option(DLL_USE_GPU "Enable OpenCL GPU acceleration" ON)
 find_package(pybind11 CONFIG REQUIRED)
 find_package(OpenMP REQUIRED)
 find_package(BLAS REQUIRED)
+find_package(LAPACK REQUIRED)
 
 if(DLL_USE_GPU)
     find_package(OpenCL QUIET)

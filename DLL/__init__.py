@@ -1,17 +1,28 @@
 from math import prod
+from typing import Any, Optional, Union, List
 
-from ._C import Tensor, rand, randn, gpu_available, gpu_device_name
-from . import Random
+from ._C import Tensor, rand, randn, gpu_available, gpu_device_name, cat, stack
+from . import Random, linalg
+from .constants import zeros, ones, eye
+from .linalg import matmul, transpose, dot, vdot, diag
 
 
-__all__ = ["Tensor", "zeros", "ones", "rand", "randn", "Random", "gpu_available", "gpu_device_name"]
-
-def zeros(shape):
-    shape = shape if isinstance(shape, list | tuple) else [shape]
-    n_elements = prod(shape)
-    return Tensor([0] * n_elements, shape)
-
-def ones(shape):
-    shape = shape if isinstance(shape, list | tuple) else [shape]
-    n_elements = prod(shape)
-    return Tensor([1] * n_elements, shape)
+__all__ = [
+    "Tensor", 
+    "zeros", 
+    "ones", 
+    "eye", 
+    "rand", 
+    "randn", 
+    "Random", 
+    "gpu_available", 
+    "gpu_device_name", 
+    "linalg",
+    "matmul",
+    "transpose",
+    "dot",
+    "vdot",
+    "diag",
+    "cat",
+    "stack",
+]

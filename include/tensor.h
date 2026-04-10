@@ -45,11 +45,14 @@ public:
     // Utilities
     float item() const;
     std::shared_ptr<Tensor> slice(py::object slices);
+    std::shared_ptr<Tensor> reshape(const std::vector<int>& new_shape);
+    std::shared_ptr<Tensor> squeeze(int dim = -1);
+    std::shared_ptr<Tensor> unsqueeze(int dim);
     std::string repr() const;
     void zero_grad();
 
     // backprop
-    void backward();
+    void backward(std::shared_ptr<Tensor> initial_grad = nullptr);
 
     // Device management
     std::shared_ptr<Tensor> to(const std::string& target_device);
